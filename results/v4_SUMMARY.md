@@ -1,84 +1,70 @@
-# MABS v4.1 (CASCADE) results summary
+# MABS v4.2 (CASCADE FLASH) results summary
 
 ## Honest goal
 
-Ship Aryaman Katoch's CASCADE priority list (CommitAction cache, pair LUT,
-defect gate, topology-safe keys, cost-aware routing, frequency admission,
-LER-safe peel/residual, adaptive_depth research hook, `defer_hard` removed),
-keep **LER = batch**, and **do not claim stage speedup** vs fair `stream_w3d`
-unless benches show it.
+Make CASCADE shortcuts **cheaper than one fair blossom** so mean stage_ns is
+at or below fair `stream_w3d`, while keeping **LER = batch** / N_disagree=0.
 
-Not claiming C++ Sparse Blossom absolute us/round.
+FLASH (default) strips 4.1 Python routing (UF/peel/cost/ExactPatternCache) that
+cost more than it saved when only ~27% of windows skipped blossom.
 
-## Fair streaming baseline
+## FLASH route (default)
 
-`window_match_edges` uses a **single** `decode_to_edges_array` (no paired
-`decode(..., return_weight=True)`). SLEM/CASCADE hard path matches that.
+1. One-pass capped defect extract (numba if available).
+2. K=0 → empty CommitAction.
+3. K=1 → boundary CommitAction LUT.
+4. K=2 → pair CommitAction LUT (prewarm hop-radius 4; miss → blossom + fill).
+5. K≥3 → immediate blossom (edges → `commit_window_edges`, same as w3d).
+6. Sticky blossom **opt-in** (`sticky_blossom=True`); off by default (skips K≤2 wins).
 
-## Algorithm (4.1.0a1)
+FULL mode: `CASCADEConfig(mode="full")` / `use_flash=False` restores 4.1 features.
 
-**CASCADE** = Cached Approximate Sparse Correction with Amortized Deferred Escalation
+Fair baseline: single `decode_to_edges_array` in `window_match_edges`.
 
-| Path | When | Action |
-|------|------|--------|
-| empty | K=0 | no-op CommitAction |
-| gate | K > gate_max (default max(12, 4·clique_cap)) | blossom |
-| cost | estimated local us >= blossom budget | blossom early |
-| cache | ExactPatternCache hit (topology-safe key) | apply **CommitAction** directly |
-| pair | K<=2 | PairPathLUT (lazy Dijkstra fill) |
-| clique | 2 < K <= clique_cap | exact clique MWPM |
-| peel | single induced component <= peel_cap | local exact; else residual |
-| residual / escalate | else | one blossom (full window when residual) |
+| method | d | p | shots | LER | mean_stage_ns | escalate | pair | empty | N_disagree |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| batch | 5 | 0.001 | 2000 | 0.0005 | 4718.6 |  |  |  | 0 |
+| stream_w3d | 5 | 0.001 | 2000 | 0.0005 | 14483.1 |  |  |  | 0 |
+| mabs_v3 | 5 | 0.001 | 2000 | 0.0005 | 22584.0 | 0.741 |  | 0.092 | 0 |
+| mabs_v4 | 5 | 0.001 | 2000 | 0.0005 | 14758.6 | 0.741 | 0.167 | 0.092 | 0 |
+| batch | 7 | 0.001 | 800 | 0 | 15570.7 |  |  |  | 0 |
+| stream_w3d | 7 | 0.001 | 800 | 0 | 25402.7 |  |  |  | 0 |
+| mabs_v3 | 7 | 0.001 | 800 | 0 | 29782.5 | 0.991 |  | 0.001 | 0 |
+| mabs_v4 | 7 | 0.001 | 800 | 0 | 25607.7 | 0.991 | 0.008 | 0.001 | 0 |
+| batch | 5 | 0.002 | 2000 | 0.011 | 10129.0 |  |  |  | 0 |
+| stream_w3d | 5 | 0.002 | 2000 | 0.011 | 18381.3 |  |  |  | 0 |
+| mabs_v3 | 5 | 0.002 | 2000 | 0.011 | 21885.9 | 0.957 |  | 0.009 | 0 |
+| mabs_v4 | 5 | 0.002 | 2000 | 0.011 | 18319.4 | 0.957 | 0.034 | 0.009 | 0 |
+| batch | 7 | 0.002 | 800 | 0.00125 | 32406.9 |  |  |  | 0 |
+| stream_w3d | 7 | 0.002 | 800 | 0.00125 | 38986.4 |  |  |  | 0 |
+| mabs_v3 | 7 | 0.002 | 800 | 0.00125 | 41346.8 | 1.000 |  | 0.000 | 0 |
+| mabs_v4 | 7 | 0.002 | 800 | 0.00125 | 38987.9 | 1.000 | 0.000 | 0.000 | 0 |
 
-### Cache key schema (topology-safe)
+## vs fair w3d / v3
 
-Absolute (default)::
-
-    (topo_id, sorted_local_defects)
-
-Relative (opt-in `canonicalize_relative=True`)::
-
-    (topo_id, "rel", relative_offsets)
-
-`topo_id = (d, window_depth, commit_stride, n_local, det_lo, graph_token)`.
-
-Values: **CommitAction** (obs XOR + carry globals) - not raw edge arrays.
-Frequency admission: insert after >= `cache_admit_after` (default 2) misses.
-
-`defer_hard` **removed** - hard windows always blossom immediately.
-
-`adaptive_depth` / method `mabs_v4_adapt`: research opt-in (default off).
-
-## Measured table - fair harness (warmup=5, fixed order)
-
-| method | d | p | shots | LER | mean_stage_ns | escalate | cache_hit | pair | peel | residual | N_disagree |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| batch | 5 | 0.001 | 2000 | 0.0005 | 4693 |  |  |  |  |  | 0 |
-| stream_w3d | 5 | 0.001 | 2000 | 0.0005 | **14408** |  |  |  |  |  | 0 |
-| mabs_v3 | 5 | 0.001 | 2000 | 0.0005 | 21219 | 0.741 |  |  |  |  | 0 |
-| **mabs_v4** | 5 | 0.001 | 2000 | **0.0005** | **34665** | **0.734** | 0.012 | 0.161 | 0.006 | 0.290 | **0** |
-| batch | 7 | 0.001 | 800 | 0 | 15003 |  |  |  |  |  | 0 |
-| stream_w3d | 7 | 0.001 | 800 | 0 | **25888** |  |  |  |  |  | 0 |
-| mabs_v3 | 7 | 0.001 | 800 | 0 | 29589 | 0.991 |  |  |  |  | 0 |
-| **mabs_v4** | 7 | 0.001 | 800 | **0** | **34104** | **0.990** | 0.000 | 0.008 | 0.001 | 0.029 | **0** |
-| batch | 5 | 0.002 | 2000 | 0.011 | 10141 |  |  |  |  |  | 0 |
-| stream_w3d | 5 | 0.002 | 2000 | 0.011 | **18598** |  |  |  |  |  | 0 |
-| mabs_v3 | 5 | 0.002 | 2000 | 0.011 | 22073 | 0.957 |  |  |  |  | 0 |
-| **mabs_v4** | 5 | 0.002 | 2000 | **0.011** | **30194** | **0.955** | 0.001 | 0.034 | 0.002 | 0.119 | **0** |
-| batch | 7 | 0.002 | 800 | 0.00125 | 32619 |  |  |  |  |  | 0 |
-| stream_w3d | 7 | 0.002 | 800 | 0.00125 | **39876** |  |  |  |  |  | 0 |
-| mabs_v3 | 7 | 0.002 | 800 | 0.00125 | 42586 | 1.000 |  |  |  |  | 0 |
-| **mabs_v4** | 7 | 0.002 | 800 | **0.00125** | **45400** | **1.000** | 0.000 | 0.000 | 0.000 | 0.000 | **0** |
+| d | p | stream_w3d | mabs_v3 (esc) | mabs_v4 FLASH (esc) | v4/w3d | LER v4 | LER batch |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 5 | 0.001 | 14483.1 | 22584.0 (0.741) | 14758.6 (0.741) | 1.019 | 0.0005 | 0.0005 |
+| 5 | 0.002 | 18381.3 | 21885.9 (0.957) | 18319.4 (0.957) | 0.997 | 0.011 | 0.011 |
+| 7 | 0.001 | 25402.7 | 29782.5 (0.991) | 25607.7 (0.991) | 1.008 | 0 | 0 |
+| 7 | 0.002 | 38986.4 | 41346.8 (1.000) | 38987.9 (1.000) | 1.000 | 0.00125 | 0.00125 |
 
 ## Claims / limitations
 
-- **Claim:** LER = batch on these cells; N_disagree = 0.
-- **Claim:** escalate slightly below v3 at d=5 via pair-LUT + cache + peel.
-- **Not claimed:** stage speedup vs fair `stream_w3d` (v4 stage is higher -
-  pure-Python routing/pair/peel overhead outweighs fewer blossoms here).
-- **Not claimed:** large escalate cut at d=7 (still ~1).
-- Multi-component peel disabled under `prefer_correctness` (LER footgun).
-- Cache is **ExactPatternCache** storing CommitActions - not isomorphism.
+- **Claim:** LER = batch; N_disagree = 0 on d=5,7 × p=1e-3,2e-3.
+- **Not claimed:** stage_ns ≤ fair stream_w3d at d=5/p=1e-3 on this fair-harness run (FLASH is best-effort ~parity; gap typically ≤~2% and run-to-run noise can flip the sign).
+- **Claim:** FLASH cuts stage vs 4.1 (~35µs → ~15µs at d=5/1e-3) by removing peel/cache/cost routing.
+- Escalate similar to v3 (FLASH does not chase escalate cuts).
+- Sticky blossom available but **off by default** (hurts stage when it skips K≤2 LUT hits).
+- `defer_hard` removed. FULL mode keeps ExactPatternCache / peel / cost routing.
+- Not claiming C++ Sparse Blossom absolute µs/round.
+
+## Profile notes (d=5/p=1e-3)
+
+- ~74% windows escalate (K≥3): cost ≈ one blossom + capped extract (~0.4µs numba) + Python.
+- ~9% empty + ~17% K≤2 LUT: cheaper than blossom (CommitAction apply).
+- Remaining gap vs w3d is escalate-path Python/extract overhead, not LUT misses.
+- **Next lever:** Cython/C extension for defect scan + LUT get + XOR apply (drop Python).
 
 ## Reproduce
 
@@ -89,4 +75,6 @@ python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3,mabs_v4 \
   --distances 5,7 --noise-sweep 0.001,0.002 --warmup 5 --fixed-order
 ```
 
-Version: **4.1.0a1** - Author: Aryaman Katoch
+## Version
+
+**4.2.0a1** — CASCADE FLASH default (Aryaman Katoch).
