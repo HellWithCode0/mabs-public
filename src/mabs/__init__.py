@@ -4,7 +4,7 @@ from mabs.config import MABSConfig
 from mabs.algorithm import run_mabs, MABSResult
 from mabs.timing import NestedTimers, TimingSample
 from mabs.mixture import MixtureStats, compute_mixture, delta_decomposition
-from mabs.reporting import boundary_factor, offered_load, SMeas, summarize
+from mabs.reporting import boundary_ratios, offered_load, SMeas, summarize
 from mabs.confidence import confidence_score, ConfidenceConfig, calibrate_auto_threshold
 from mabs.adaptive import AdaptiveConfig, AdaptiveState, stream_shot_adaptive_timed
 
@@ -17,7 +17,7 @@ __all__ = [
     "MixtureStats",
     "compute_mixture",
     "delta_decomposition",
-    "boundary_factor",
+    "boundary_ratios",
     "offered_load",
     "SMeas",
     "summarize",
