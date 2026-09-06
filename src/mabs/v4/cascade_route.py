@@ -1,4 +1,4 @@
-"""CASCADE per-window route decisions (v4.1)."""
+"""CASCADE per-window route decisions (v4.2 FLASH + FULL)."""
 from __future__ import annotations
 from typing import Any, List, Optional, Tuple
 import numpy as np
@@ -6,16 +6,104 @@ from mabs.v3.local_decode import blossom_edges_only, syndrome_cleared_by_edges
 from mabs.v4.clique_mwpm import clique_mwpm_edges
 from mabs.v4.commit_action import CommitAction, edges_to_commit_action
 from mabs.v4.exact_pattern_cache import ExactPatternCache
+from mabs.v4.flash_lut import FlashCommitLUT, get_flash_lut
 from mabs.v4.cascade_core import (
     CASCADEConfig, CASCADEState,
     _COST_CLIQUE_BASE, _COST_CLIQUE_K, _COST_PAIR,
     _estimate_local_cost, _peel_easy_residual, _try_clique, _try_pair_lut,
 )
 
+_EMPTY_EDGES = np.zeros((0, 2), dtype=np.int64)
+
+
+def route_window_flash(
+    wm,
+    buf,
+    defects: np.ndarray,
+    n_defects: int,
+    *,
+    config: CASCADEConfig,
+    state: CASCADEState,
+    lut: FlashCommitLUT,
+) -> Tuple[str, np.ndarray, Optional[CommitAction], bool, float]:
+    """FLASH hot path: empty / K=1 boundary / K=2 pair / K>=3 blossom.
+
+    On escalate sets ``state.sticky_this_shot`` when sticky_blossom enabled.
+    Blossom path returns action=None so caller uses commit_window_edges
+    (same as fair stream_w3d — avoid CommitAction compile overhead).
+    """
+    if n_defects == 0:
+        state.n_empty += 1
+        state._bump_route("empty")
+        return "empty", _EMPTY_EDGES, CommitAction.empty(), False, 0.0
+
+    if n_defects == 1:
+        a = int(defects[0])
+        act = lut.get_boundary(a)
+        if act is not None:
+            state.n_boundary += 1
+            state.n_pair += 1
+            state._bump_route("boundary")
+            return "boundary", _EMPTY_EDGES, act, False, 0.0
+        edges, weight = blossom_edges_only(wm, buf)
+        state.n_escalate += 1
+        state._bump_route("escalate")
+        if config.sticky_blossom:
+            state.sticky_this_shot = True
+        return "escalate", edges, None, True, weight
+
+    if n_defects == 2:
+        a = int(defects[0])
+        b = int(defects[1])
+        act = lut.get_pair(a, b)
+        if act is not None:
+            state.n_pair += 1
+            state._bump_route("pair")
+            return "pair", _EMPTY_EDGES, act, False, 0.0
+        edges, weight = blossom_edges_only(wm, buf)
+        if config.fill_pair_lut_on_miss and edges is not None and edges.size:
+            act = lut.fill_pair_from_edges(a, b, edges)
+            state.n_pair += 1
+            state._bump_route("pair_fill")
+            return "pair_fill", _EMPTY_EDGES, act, False, weight
+        state.n_escalate += 1
+        state._bump_route("escalate")
+        if config.sticky_blossom:
+            state.sticky_this_shot = True
+        return "escalate", edges, None, True, weight
+
+    edges, weight = blossom_edges_only(wm, buf)
+    state.n_escalate += 1
+    state._bump_route("escalate")
+    if config.sticky_blossom:
+        state.sticky_this_shot = True
+    return "escalate", edges, None, True, weight
+
+
+def route_window_flash_sticky(
+    wm,
+    buf,
+    *,
+    state: CASCADEState,
+) -> Tuple[str, np.ndarray, Optional[CommitAction], bool, float]:
+    """Sticky path: blossom immediately (no LUT / extract). Empty short-circuit."""
+    n = wm.n_local
+    if not np.count_nonzero(buf[:n]):
+        state.n_empty += 1
+        state.n_sticky += 1
+        state._bump_route("sticky_empty")
+        return "sticky_empty", _EMPTY_EDGES, CommitAction.empty(), False, 0.0
+    edges, weight = blossom_edges_only(wm, buf)
+    state.n_escalate += 1
+    state.n_sticky += 1
+    state._bump_route("sticky")
+    return "sticky", edges, None, True, weight
+
+
 def route_window(
     wm, buf, fired, n_defects, *, config: CASCADEConfig, state: CASCADEState, topo, gate_max: int,
 ) -> Tuple[str, np.ndarray, Optional[CommitAction], bool, float]:
-    """Return (path, edges, action, escalated, weight)."""
+    """FULL (4.1) route: cache / pair / clique / peel / cost / gate."""
     edges = np.zeros((0, 2), dtype=np.int64)
     action: Optional[CommitAction] = None
     weight = 0.0
