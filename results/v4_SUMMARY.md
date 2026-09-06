@@ -2,80 +2,59 @@
 
 ## Honest goal
 
-Cut blossom **escalate** vs v3.1 SLEM via **CASCADE** (iso-cache + exact clique
-MWPM), keep **LER = batch**, and keep mean stage competitive with `stream_w3d` / v3.
+Cut blossom **escalate** vs v3.1 SLEM via **CASCADE** (ExactPatternCache + exact
+clique MWPM), keep **LER = batch**, and keep mean stage competitive with
+`stream_w3d` / v3.
 
 Not claiming C++ Sparse Blossom absolute µs/round.
 
-## Algorithm
+## Fair streaming baseline fix (4.0.1a1) — CRITICAL
 
-**CASCADE** = Cached Approximate Sparse Correction with Amortized Deferred Escalation
+Prior `stream_w3d` ran **two** PyMatching blossom calls per window
+(`decode(..., return_weight=True)` **and** `decode_to_edges_array`).
+SLEM/CASCADE hard path only runs one `decode_to_edges_array`. That inflated
+w3d `stage_ns` (~2×) and made speedups vs w3d look better than they were
+(especially when escalate≈1).
 
-| Path | When | Action |
-|------|------|--------|
-| empty | K=0 | no-op |
-| cache | `clique_cap < K ≤ cache_k_max` and global key hit | replay stored edges |
-| clique | `K ≤ clique_cap` (default **2**) | exact 1–2 defect MWPM (raise cap to 3–6 for research) |
-| escalate | else | one `decode_to_edges_array`; store in cache if K≤cache_k_max |
+**Fix:** `window_match_edges` / `_edges_and_weight` now call only
+`decode_to_edges_array` (weight returned as `nan`; unused for timing).
 
-- Truncated per-window DEMs + carry XOR commit (same as v2/v3) → LER-safe default.
-- `use_component_clique` **off** (induced components ignore cross-quiescent matchings → LER risk).
-- `defer_hard` experimental; default per-window blossom for hard cases.
+After the fix, when escalate≈1, CASCADE stage is **~parity** with fair w3d
+(one blossom each) plus small Python CASCADE overhead — **not** a large win.
 
-## Measured table — default v4.0.0a1 (this machine)
+## Measured table — 4.0.1a1 fair baseline
 
-| method | d | p | shots | LER | mean_stage_ns | escalate | cache_hit | clique |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| batch | 5 | 0.001 | 2000 | 0.0005 | 6663 |  |  |  |
-| stream_w3d | 5 | 0.001 | 2000 | 0.0005 | 23285 |  |  |  |
-| mabs_v3 | 5 | 0.001 | 2000 | 0.0005 | 22688 | 0.741 |  |  |
-| **mabs_v4** | 5 | 0.001 | 2000 | **0.0005** | **28629** | **0.670** | 0.171 | 0.167 |
-| batch | 7 | 0.001 | 800 | 0 | 24463 |  |  |  |
-| stream_w3d | 7 | 0.001 | 800 | 0 | 43518 |  |  |  |
-| mabs_v3 | 7 | 0.001 | 800 | 0 | 29014 | 0.991 |  |  |
-| **mabs_v4** | 7 | 0.001 | 800 | **0** | **30111** | **0.988** | 0.045 | 0.008 |
-| batch | 5 | 0.002 | 2000 | 0.011 | 11426 |  |  |  |
-| stream_w3d | 5 | 0.002 | 2000 | 0.011 | 25710 |  |  |  |
-| mabs_v3 | 5 | 0.002 | 2000 | 0.011 | 23054 | 0.957 |  |  |
-| **mabs_v4** | 5 | 0.002 | 2000 | **0.011** | **24511** | **0.944** | 0.070 | 0.034 |
-| batch | 7 | 0.002 | 800 | 0.00125 | 40848 |  |  |  |
-| stream_w3d | 7 | 0.002 | 800 | 0.00125 | 59158 |  |  |  |
-| mabs_v3 | 7 | 0.002 | 800 | 0.00125 | 41113 | 1.000 |  |  |
-| **mabs_v4** | 7 | 0.002 | 800 | **0.00125** | **40107** | **1.000** | 0.000 | 0.000 |
+| method | d | p | shots | LER | mean_stage_ns | escalate | cache_hit | clique | N_disagree |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| batch | 5 | 0.001 | 2000 | 0.0005 | 4585 |  |  |  | 0 |
+| stream_w3d | 5 | 0.001 | 2000 | 0.0005 | **14956** |  |  |  | 0 |
+| mabs_v3 | 5 | 0.001 | 2000 | 0.0005 | 22093 | 0.741 |  |  | 0 |
+| **mabs_v4** | 5 | 0.001 | 2000 | **0.0005** | **28259** | **0.670** | 0.171 | 0.167 | 0 |
+| batch | 7 | 0.001 | 800 | 0 | 15086 |  |  |  | 0 |
+| stream_w3d | 7 | 0.001 | 800 | 0 | **26254** |  |  |  | 0 |
+| mabs_v3 | 7 | 0.001 | 800 | 0 | 29907 | 0.991 |  |  | 0 |
+| **mabs_v4** | 7 | 0.001 | 800 | **0** | **30986** | **0.988** | 0.045 | 0.008 | 0 |
+| batch | 5 | 0.002 | 2000 | 0.011 | 9819 |  |  |  | 0 |
+| stream_w3d | 5 | 0.002 | 2000 | 0.011 | **18572** |  |  |  | 0 |
+| mabs_v3 | 5 | 0.002 | 2000 | 0.011 | 21788 | 0.957 |  |  | 0 |
+| **mabs_v4** | 5 | 0.002 | 2000 | **0.011** | **25051** | **0.944** | 0.070 | 0.034 | 0 |
+| batch | 7 | 0.002 | 800 | 0.00125 | 31486 |  |  |  | 0 |
+| stream_w3d | 7 | 0.002 | 800 | 0.00125 | **38616** |  |  |  | 0 |
+| mabs_v3 | 7 | 0.002 | 800 | 0.00125 | 40175 | 1.000 |  |  | 0 |
+| **mabs_v4** | 7 | 0.002 | 800 | **0.00125** | **40774** | **1.000** | 0.000 | 0.000 | 0 |
 
-## Pareto vs v3 / w3d
+At escalate≈1 (d=7,p=0.002): v4 stage 40774 ≈ fair w3d 38616 (~parity + Python overhead).
 
-| d | p | w3d stage | v3 (esc) | v4 (esc) | Δesc | LER |
-|---:|---:|---:|---:|---:|---:|---|
-| 5 | 0.001 | 23285 | 22688 (0.741) | 28629 (0.670) | **−0.071** | = batch |
-| 5 | 0.002 | 25710 | 23054 (0.957) | 24511 (0.944) | −0.013 | = batch |
-| 7 | 0.001 | 43518 | 29014 (0.991) | 30111 (0.988) | −0.003 | = batch |
-| 7 | 0.002 | 59158 | 41113 (1.000) | 40107 (1.000) | 0 | = batch |
+Version: **4.0.1a1**
 
-## Research: `clique_cap=4` (not default)
+## Colab
 
-At d=5, p=1e-3, ~800 shots: esc≈**0.52**, stage≈**157µs** (≫ w3d). Exact K=3–4
-clique needs several Dijkstras on the window graph; C++ blossom wins on the clock.
-**Cannot hit esc&lt;0.5 ∧ LER=batch ∧ stage≤w3d** in pure Python at this working point
-(same honest Pareto wall as v3.1 low-escalate mode).
-
-## Claims / limitations
-
-- **Claim**: default CASCADE keeps LER = batch on these cells; escalate clearly below
-  v3.1 at d=5 p=1e-3 (0.67 vs 0.74) via cache + K≤2 clique; stage near w3d/v3
-  (slightly above at d=5/1e-3; ≤ w3d elsewhere, sometimes &lt; v3).
-- **Not claimed**: esc&lt;0.5 at d=5 without stage regression; esc improvement at d=7
-  (windows too dense; escalate stays ≈1).
-- **Not claimed**: beating C++ Sparse Blossom absolute µs/round.
-- Component-wise clique and aggressive `defer_hard` left off (LER risk).
-
-## Reproduce
-
-```bash
-pip install -e .
-pytest -q
-python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3,mabs_v4 \
-  --distances 5,7 --noise-sweep 0.001,0.002
+```python
+!rm -rf mabs-public
+!git clone https://github.com/HellWithCode0/mabs-public.git
+%cd mabs-public
+!pip install -e . -q
+!pytest -q
+!python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3,mabs_v4 \
+  --distances 5,7 --noise-sweep 0.001,0.002 --warmup 5
 ```
-
-Version: **4.0.0a1**
