@@ -1,4 +1,4 @@
-"""Window matchers, commit/carry, and circuit bundle construction."""
+"""Window matchers, commit/carry, circuit bundle."""
 
 from __future__ import annotations
 
@@ -161,24 +161,20 @@ def _earliest_layer(a: int, b: int, detector_time: np.ndarray, n_det: int) -> in
 
 
 def _edges_and_weight(matching: Any, syndrome: np.ndarray) -> tuple:
-    try:
-        _corr, weight = matching.decode(syndrome, return_weight=True)
-        weight = float(weight)
-    except Exception:
-        weight = 0.0
+    """Single blossom call (decode_to_edges_array only). Weight unused for timing."""
     try:
         pairs = matching.decode_to_edges_array(syndrome)
     except Exception:
-        return np.zeros((0, 2), dtype=np.int64), weight
+        return np.zeros((0, 2), dtype=np.int64), float("nan")
     if pairs is None or len(pairs) == 0:
-        return np.zeros((0, 2), dtype=np.int64), weight
+        return np.zeros((0, 2), dtype=np.int64), float("nan")
     arr = np.asarray(pairs, dtype=np.int64)
     if arr.ndim == 1:
         arr = arr.reshape(-1, 2)
     n = matching.num_detectors
     arr = np.where(arr >= n, -1, arr)
     arr = np.where(arr < -1, -1, arr)
-    return arr, weight
+    return arr, float("nan")
 
 
 def commit_window_edges(edges: np.ndarray, wm: WindowMatcher, carry: np.ndarray, *, carry_forward: bool = True) -> tuple:
@@ -212,21 +208,22 @@ def commit_window_edges(edges: np.ndarray, wm: WindowMatcher, carry: np.ndarray,
 
 
 def window_match_edges(wm: WindowMatcher, buf: np.ndarray) -> tuple:
-    try:
-        _corr, weight = wm.matching.decode(buf, return_weight=True)
-        weight = float(weight)
-    except Exception:
-        weight = 0.0
+    """Single blossom call for fair stage_ns vs SLEM/CASCADE hard path.
+
+    Previously called both ``decode(..., return_weight=True)`` and
+    ``decode_to_edges_array`` (double PyMatching). Weight is not needed for
+    timing comparison; return nan.
+    """
     try:
         pairs = wm.matching.decode_to_edges_array(buf)
     except Exception:
-        return np.zeros((0, 2), dtype=np.int64), weight
+        return np.zeros((0, 2), dtype=np.int64), float("nan")
     if pairs is None or len(pairs) == 0:
-        return np.zeros((0, 2), dtype=np.int64), weight
+        return np.zeros((0, 2), dtype=np.int64), float("nan")
     arr = np.asarray(pairs, dtype=np.int64)
     if arr.ndim == 1:
         arr = arr.reshape(-1, 2)
-    return arr, weight
+    return arr, float("nan")
 
 
 def mask_to_obs_array(mask: int, n_obs: int) -> np.ndarray:
