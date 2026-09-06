@@ -8,15 +8,19 @@ error-correction control layer on Stim rotated surface-code memory + PyMatching.
 **Not** “beat Higgott–Gidney absolute µs in pure Python.”
 
 **Goal:** cut Sparse Blossom *escalate* vs v3.1 SLEM via **CASCADE**
-(iso-cache + exact clique MWPM), keep **LER = batch**, and keep mean stage
-competitive with `stream_w3d` / v3 where possible.
+(ExactPatternCache + exact clique MWPM), keep **LER = batch**.
+
+CASCADE reduces blossom invocation frequency, but on this pure-Python implementation
+shortcut/control overhead outweighs those savings in elapsed stage time at d=5/1e-3
+(28µs vs fair w3d ~15µs). At d=7 escalate≈1 → ~parity with fair blossom.
+**Do not claim stage speedup** vs fair `stream_w3d`.
 
 ## CASCADE (v4)
 
 **Cached Approximate Sparse Correction with Amortized Deferred Escalation**
 
 1. **Empty** → no-op.
-2. **Iso-cache** — global detector-id keys; stores blossom outcomes for moderate
+2. **ExactPatternCache** — exact absolute/global detector-id keys; stores blossom outcomes for moderate
    hard windows (`clique_cap < K ≤ cache_k_max`) so repeated syndromes skip blossom.
 3. **Clique MWPM** — exact matching for `K ≤ clique_cap` (default **2** for stage
    Pareto; raise to 3–6 to cut escalate further at pure-Python Dijkstra cost).
@@ -49,8 +53,8 @@ pip install -e .
 %cd mabs-public
 !pip install -e . -q
 !pytest -q
-!python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3,mabs_v4 --distances 5,7 --noise 0.001
-!python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3,mabs_v4 --distances 5,7 --noise 0.002
+!python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3,mabs_v4 \
+  --distances 5,7 --noise-sweep 0.001,0.002 --warmup 5
 ```
 
 Private: `https://github.com/HellWithCode0/mabs.git`
@@ -81,7 +85,7 @@ Includes v4 cache / clique / LER smoke (`tests/test_v4_cascade.py`) and v3 SLEM 
 src/mabs/
   v4/
     cascade.py        # CASCADE streaming shot decoder
-    iso_cache.py      # global-key LRU syndrome cache
+    exact_pattern_cache.py  # ExactPatternCache (exact memoization)
     clique_mwpm.py    # exact MWPM on K≤6 complete graph + boundary
     baseline_runner.py
   v3/                 # SLEM (still available as mabs_v3)
@@ -97,7 +101,7 @@ results/
 
 ## Version
 
-`4.0.0a1`
+`4.0.1a2`
 
 ## License
 
