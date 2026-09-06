@@ -1,7 +1,8 @@
-"""Syndrome-pattern cache for repeated sparse windows.
+"""Exact syndrome-pattern cache for repeated sparse windows.
 
-Default key: ``(det_lo, sorted local defect indices)`` — same window template
-across shots (no global remap). Optional global-key API kept for experiments.
+``ExactPatternCache`` memoizes absolute/global detector patterns — exact
+memoization, **not** translation-isomorphism. Keys are exact defect-id tuples
+(optionally scoped by ``det_lo``). Optional global-key API kept for experiments.
 LRU / size-capped (~10k). Metrics: hits / misses / hit_rate.
 """
 
@@ -87,8 +88,8 @@ def _build_g2l(gnode_list: Sequence[int]) -> Dict[int, int]:
 
 
 @dataclass
-class IsoCache:
-    """LRU cache for matching edges.
+class ExactPatternCache:
+    """LRU exact-pattern cache for matching edges (not isomorphism).
 
     Primary API uses window-local keys ``(det_lo, sorted_locals)``.
     """
@@ -135,7 +136,7 @@ class IsoCache:
             return None
         self.hits += 1
         self._store.move_to_end(key)
-        return self._store[key]  # borrow; caller must not mutate
+        return self._store[key]
 
     def store_local(
         self,
@@ -149,7 +150,6 @@ class IsoCache:
         arr = np.asarray(edges, dtype=np.int64).reshape(-1, 2).copy()
         self._put(key, arr)
 
-    # --- backward-compatible / experimental global API ---
     def lookup_global(self, global_defects: Sequence[int]) -> Optional[np.ndarray]:
         key = ("g", tuple(sorted(int(x) for x in global_defects)))
         if key[1] == ():
@@ -176,7 +176,6 @@ class IsoCache:
         g2l: Optional[Dict[int, int]] = None,
         det_lo: Optional[int] = None,
     ) -> Optional[np.ndarray]:
-        """Prefer det_lo local key; else absolute local; else global remap."""
         if det_lo is not None:
             return self.lookup_local(det_lo, defects)
         if gnode_list is not None:
@@ -226,3 +225,6 @@ class IsoCache:
             "cache_hit_rate": self.hit_rate,
             "cache_size": float(self.size),
         }
+
+
+IsoCache = ExactPatternCache
