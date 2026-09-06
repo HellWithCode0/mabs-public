@@ -113,7 +113,6 @@ def loglog_ols_slope(
         return None
     x = np.log(ds[mask])
     y = np.log(vs[mask])
-    # OLS slope
     x_mean = x.mean()
     y_mean = y.mean()
     var = ((x - x_mean) ** 2).sum()
@@ -128,10 +127,7 @@ def offered_load(
     C: int,
     tau_c: float,
 ) -> float:
-    """Offered load ρ = E[τ_B] / (k * C * τ_c).
-
-    τ_B is typically identified with stage (or match) boundary service time.
-    """
+    """Offered load ρ = E[τ_B] / (k * C * τ_c)."""
     den = k_workers * C * tau_c
     if den == 0:
         return float("nan")
@@ -216,7 +212,6 @@ def summarize(
         for d, info in by_d.items():
             info["ratios"]["loglog_slope"] = slope
 
-    # Δ between consecutive configured distances
     from mabs.mixture import MixtureStats as MS, delta_decomposition
 
     deltas = []
@@ -245,3 +240,7 @@ def summarize(
         extra={"loglog_slope_R_mean": slope},
     )
     return {"by_distance": by_d, "S_meas": s_meas.as_dict(), "deltas": deltas}
+
+
+# Back-compat alias for older imports / mirrors
+boundary_factor = boundary_ratios
