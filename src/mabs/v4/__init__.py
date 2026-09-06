@@ -12,6 +12,7 @@ from mabs.v4.exact_pattern_cache import ExactPatternCache, IsoCache, canonicaliz
 from mabs.v4.clique_mwpm import clique_mwpm_edges, clique_decode_window
 from mabs.v4.commit_action import CommitAction, edges_to_commit_action, apply_commit_action
 from mabs.v4.pair_lut import PairPathLUT, decode_pair_cached
+from mabs.v4.flash_lut import FlashCommitLUT, get_flash_lut, extract_defects, has_numba
 
 __all__ = [
     "CASCADEConfig",
@@ -30,6 +31,10 @@ __all__ = [
     "apply_commit_action",
     "PairPathLUT",
     "decode_pair_cached",
+    "FlashCommitLUT",
+    "get_flash_lut",
+    "extract_defects",
+    "has_numba",
 ]
 
-__version__ = "4.1.0a1"
+__version__ = "4.2.0a1"

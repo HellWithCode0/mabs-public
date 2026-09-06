@@ -4,7 +4,6 @@ A CommitAction is the *effect* of matching edges on (obs_mask, carry) for one
 window — usable directly by the same machinery as ``commit_window_edges``,
 without re-interpreting raw edge arrays on every ExactPatternCache hit.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -73,12 +72,19 @@ def edges_to_commit_action(edges: np.ndarray, wm: Any) -> CommitAction:
             n_committed += 1
             if cu != cv:
                 carry_set.append(int(gv if cu else gu))
-    carry_globals = tuple(sorted(set(carry_set)))
+    # XOR multiplicity mod 2 (NOT set-unique): two flips of the same global cancel.
+    parity: dict = {}
+    for g in carry_set:
+        parity[g] = parity.get(g, 0) ^ 1
+    carry_globals = tuple(sorted(g for g, bit in parity.items() if bit))
     return CommitAction(obs_xor=int(obs), carry_globals=carry_globals, n_committed=n_committed)
 
 
 def apply_commit_action(action: CommitAction, carry: np.ndarray) -> Tuple[int, int]:
-    """Apply a cached CommitAction into carry; return (obs_xor, n_committed)."""
+    """Apply a cached CommitAction into carry; return (obs_xor, n_committed).
+
+    Same observable / carry semantics as ``commit_window_edges``.
+    """
     if action is None or (action.obs_xor == 0 and not action.carry_globals and action.n_committed == 0):
         return 0, 0
     for g in action.carry_globals:
@@ -96,8 +102,10 @@ def commit_edges_or_action(
     *,
     carry_forward: bool = True,
 ) -> Tuple[int, int]:
-    del carry_forward
+    """Prefer CommitAction when present; else fall back to edge commit."""
+    del carry_forward  # action already encodes carry-forward effect
     if action is not None:
         return apply_commit_action(action, carry)
     from mabs.streaming_windows import commit_window_edges
+
     return commit_window_edges(edges, wm, carry, carry_forward=True)

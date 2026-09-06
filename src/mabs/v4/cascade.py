@@ -1,16 +1,17 @@
 """CASCADE — Cached Approximate Sparse Correction with Amortized Deferred Escalation.
 
-MABS v4.1 streaming decoder (Aryaman Katoch priority list).
+MABS v4.2 streaming decoder (Aryaman Katoch).
 
-Route (cost-aware)::
+**FLASH** (default)::
 
-    empty → ExactPatternCache (CommitAction) → pair-LUT (K=2)
-    → clique → peel easy / blossom residual → blossom
+    empty → K=1 boundary CommitAction LUT → K=2 pair CommitAction LUT
+    → K>=3 immediate blossom; sticky blossom opt-in (off by default — stage Pareto)
 
-Defaults keep LER = batch. ``defer_hard`` removed.
-``adaptive_depth`` / ``mabs_v4_adapt`` is research opt-in (default off).
+**FULL** (opt-in ``mode="full"`` / ``use_flash=False``)::
 
-Implementation split: ``cascade_core`` (config/helpers) + ``cascade_stream`` (router).
+    empty → ExactPatternCache → pair-LUT → clique → peel/residual → blossom
+
+``defer_hard`` removed. ``adaptive_depth`` / ``mabs_v4_adapt`` research opt-in.
 """
 
 from mabs.v4.cascade_core import (

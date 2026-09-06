@@ -1,5 +1,4 @@
-"""Baseline runner for MABS v4 / CASCADE."""
-
+"""Baseline runner for MABS v4 / CASCADE (FLASH default)."""
 from __future__ import annotations
 
 import time
@@ -17,7 +16,7 @@ def run_cascade_baseline(
     method_name: str = "mabs_v4",
     warmup: int = 0,
 ) -> BaselineResult:
-    """MABS v4 CASCADE streaming decoder."""
+    """MABS v4 CASCADE streaming decoder (FLASH default)."""
     from mabs.v4.cascade import (
         CASCADEConfig,
         CASCADEState,
@@ -27,23 +26,7 @@ def run_cascade_baseline(
     from mabs.v4.exact_pattern_cache import ExactPatternCache
 
     if config is None:
-        config = CASCADEConfig(
-            clique_cap=2,
-            use_cache=True,
-            use_clique=True,
-            use_pair_lut=True,
-            use_peel=True,
-            use_component_clique=False,
-            check_syndrome=True,
-            prefer_correctness=True,
-            cache_escalations=True,
-            cache_k_max=6,
-            cache_admit_after=2,
-            canonicalize_relative=False,
-            cost_aware=True,
-            adaptive_depth=False,
-            prewarm_graphs=True,
-        )
+        config = CASCADEConfig()  # FLASH defaults
     state = CASCADEState(
         cache=ExactPatternCache(
             max_size=config.cache_size,
@@ -54,7 +37,7 @@ def run_cascade_baseline(
     d = bundle.d
     w = max(1, int(round(config.window_factor * d)))
     C = max(1, int(round(config.commit_factor * d)))
-    prewarm_cascade_graphs(bundle, w, C)
+    prewarm_cascade_graphs(bundle, w, C, config=config)
     state.graphs_ready = True
     shots = int(syndromes.shape[0])
     warm = max(0, min(int(warmup), max(shots - 1, 0)))
@@ -100,6 +83,8 @@ def run_cascade_baseline(
             "pair_rate": state.pair_rate,
             "peel_rate": state.peel_rate,
             "residual_rate": state.residual_rate,
+            "sticky_rate": state.sticky_rate,
+            "boundary_rate": state.boundary_rate,
             "cache_hit_rate": state.cache_hit_rate,
             "n_windows": state.n_windows,
             "n_escalate": state.n_escalate,
@@ -109,10 +94,13 @@ def run_cascade_baseline(
             "n_pair": state.n_pair,
             "n_peel": state.n_peel,
             "n_residual": state.n_residual,
+            "n_sticky": state.n_sticky,
+            "n_boundary": state.n_boundary,
             "n_gate_escalate": state.n_gate_escalate,
             "n_cost_escalate": state.n_cost_escalate,
             "clique_cap": config.clique_cap,
             "gate_max": config.resolved_gate_max(),
+            "mode": "flash" if config.is_flash() else "full",
             "_preds": pred_arr,
             "warmup_shots": warm,
         },
