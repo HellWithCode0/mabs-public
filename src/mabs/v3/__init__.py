@@ -1,4 +1,4 @@
-"""MABS v3 — Sparse Local Escalation Matching (SLEM)."""
+"""MABS v3.1 — Sparse Local Escalation Matching (SLEM)."""
 
 from mabs.v3.slem import (
     SLEMConfig,
@@ -23,4 +23,4 @@ __all__ = [
     "build_detector_graph",
 ]
 
-__version__ = "3.0.0a1"
+__version__ = "3.1.0a1"
