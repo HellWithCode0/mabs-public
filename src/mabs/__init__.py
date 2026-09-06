@@ -38,4 +38,4 @@ __all__ = [
     "stream_shot_cascade",
 ]
 
-__version__ = "4.0.1a2"
+__version__ = "4.0.1a3"
