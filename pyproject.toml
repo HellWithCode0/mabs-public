@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mabs"
-version = "3.1.0a1"
-description = "MABS v3: Sparse Local Escalation Matching (SLEM) for streaming QEC"
+version = "4.0.0a1"
+description = "MABS v4: CASCADE streaming QEC decoder (iso-cache + clique MWPM)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
