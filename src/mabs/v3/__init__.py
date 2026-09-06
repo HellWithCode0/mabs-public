@@ -1,4 +1,4 @@
-"""MABS v3.1 — Sparse Local Escalation Matching (SLEM)."""
+"""MABS v3.1 \u2014 Sparse Local Escalation Matching (SLEM)."""
 
 from mabs.v3.slem import (
     SLEMConfig,

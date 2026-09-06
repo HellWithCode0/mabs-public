@@ -1,4 +1,4 @@
-"""MABS v3.1: Sparse Local Escalation Matching for streaming QEC."""
+"""MABS v3: Sparse Local Escalation Matching for streaming QEC."""
 
 from mabs.config import MABSConfig
 from mabs.algorithm import run_mabs, MABSResult
