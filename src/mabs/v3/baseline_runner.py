@@ -16,6 +16,7 @@ def run_slem_baseline(
     *,
     config=None,
     method_name: str = "mabs_v3",
+    warmup: int = 0,
 ) -> BaselineResult:
     """MABS v3.1 Sparse Local Escalation Matching (SLEM)."""
     from mabs.v3.slem import SLEMConfig, SLEMState, stream_shot_slem_timed, prewarm_slem_graphs
@@ -54,9 +55,11 @@ def run_slem_baseline(
     prewarm_slem_graphs(bundle, w, C)
     state.graphs_ready = True
     shots = int(syndromes.shape[0])
+    warm = max(0, min(int(warmup), max(shots - 1, 0)))
     all_records = []
     errors = 0
     shot_times = []
+    preds = []
     for s in range(shots):
         t0 = time.perf_counter_ns()
         out = stream_shot_slem_timed(
@@ -68,11 +71,14 @@ def run_slem_baseline(
             observable_flips=observables[s],
         )
         t1 = time.perf_counter_ns()
-        shot_times.append(t1 - t0)
-        all_records.extend(out.records)
+        preds.append(np.asarray(out.predicted_observables, dtype=np.uint8).ravel())
         if out.logical_error:
             errors += 1
+        if s >= warm:
+            shot_times.append(t1 - t0)
+            all_records.extend(out.records)
     mean_stage, mean_match = _agg_records(all_records)
+    pred_arr = np.stack(preds, axis=0) if preds else np.zeros((0, 1), dtype=np.uint8)
     return BaselineResult(
         method=method_name,
         d=bundle.d,
@@ -94,5 +100,7 @@ def run_slem_baseline(
             "n_local": state.n_local,
             "max_local_defects": state.policy.max_local_defects,
             "max_local_cluster": state.policy.max_local_cluster,
+            "_preds": pred_arr,
+            "warmup_shots": warm,
         },
     )

@@ -15,6 +15,7 @@ def run_cascade_baseline(
     *,
     config=None,
     method_name: str = "mabs_v4",
+    warmup: int = 0,
 ) -> BaselineResult:
     """MABS v4 CASCADE streaming decoder."""
     from mabs.v4.cascade import (
@@ -23,7 +24,7 @@ def run_cascade_baseline(
         stream_shot_cascade_timed,
         prewarm_cascade_graphs,
     )
-    from mabs.v4.iso_cache import IsoCache
+    from mabs.v4.exact_pattern_cache import ExactPatternCache
 
     if config is None:
         config = CASCADEConfig(
@@ -38,16 +39,18 @@ def run_cascade_baseline(
             cache_k_max=6,
             prewarm_graphs=True,
         )
-    state = CASCADEState(cache=IsoCache(max_size=config.cache_size))
+    state = CASCADEState(cache=ExactPatternCache(max_size=config.cache_size))
     d = bundle.d
     w = max(1, int(round(config.window_factor * d)))
     C = max(1, int(round(config.commit_factor * d)))
     prewarm_cascade_graphs(bundle, w, C)
     state.graphs_ready = True
     shots = int(syndromes.shape[0])
+    warm = max(0, min(int(warmup), max(shots - 1, 0)))
     all_records = []
     errors = 0
     shot_times = []
+    preds = []
     for s in range(shots):
         t0 = time.perf_counter_ns()
         out = stream_shot_cascade_timed(
@@ -59,11 +62,14 @@ def run_cascade_baseline(
             observable_flips=observables[s],
         )
         t1 = time.perf_counter_ns()
-        shot_times.append(t1 - t0)
-        all_records.extend(out.records)
+        preds.append(np.asarray(out.predicted_observables, dtype=np.uint8).ravel())
         if out.logical_error:
             errors += 1
+        if s >= warm:
+            shot_times.append(t1 - t0)
+            all_records.extend(out.records)
     mean_stage, mean_match = _agg_records(all_records)
+    pred_arr = np.stack(preds, axis=0) if preds else np.zeros((0, 1), dtype=np.uint8)
     return BaselineResult(
         method=method_name,
         d=bundle.d,
@@ -88,5 +94,7 @@ def run_cascade_baseline(
             "n_clique": state.n_clique,
             "n_defer_flush": state.n_defer_flush,
             "clique_cap": config.clique_cap,
+            "_preds": pred_arr,
+            "warmup_shots": warm,
         },
     )
