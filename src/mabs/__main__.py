@@ -10,7 +10,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     if argv and argv[0] in ("--benchmark", "benchmark"):
-        from mabs.benchmark import main as bench_main
+        from mabs.v3.cli_bench import main as bench_main
 
         return bench_main(argv[1:])
 
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Unknown arg: {argv[i]}", file=sys.stderr)
             return 2
 
-    print("MABS v2 — Mixture-Aware Adaptive Boundary Streaming")
+    print("MABS v4 — CASCADE (cache + clique MWPM + escalate)")
     print(
         f"  distances={list(cfg.distances)} shots={cfg.shots} "
         f"campaigns={cfg.campaigns} kernel={cfg.kernel} p={cfg.noise} "
