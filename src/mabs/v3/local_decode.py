@@ -9,6 +9,23 @@ import numpy as np
 from mabs.v3.cluster import Cluster, DetectorGraph, _get_graph_cache
 
 
+def _path_edges_from_prev(end: int, prev: Dict[int, Optional[int]], n_local: int) -> List[Tuple[int, int]]:
+    edges: List[Tuple[int, int]] = []
+    x: Optional[int] = end
+    seen = set()
+    while x is not None and x not in seen:
+        seen.add(x)
+        p = prev.get(x)
+        if p is None:
+            break
+        if p == -1:
+            edges.append((x, n_local))
+            break
+        edges.append((x, p))
+        x = p
+    return edges
+
+
 def boundary_path_edges(graph: DetectorGraph, defect: int) -> Optional[List[Tuple[int, int]]]:
     if defect not in graph.bound_prev:
         return None
