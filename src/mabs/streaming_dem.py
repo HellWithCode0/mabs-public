@@ -22,8 +22,6 @@ BIG_LAYER = 2**30
 
 @dataclass
 class WindowRecord:
-    """Per-window timing, mixture, and confidence observables."""
-
     d: int
     campaign: int
     shot: int
@@ -45,31 +43,21 @@ class WindowRecord:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "d": self.d,
-            "campaign": self.campaign,
-            "shot": self.shot,
-            "window_index": self.window_index,
-            "K": self.K,
-            "tau_input_ns": self.tau_input_ns,
-            "tau_match_ns": self.tau_match_ns,
-            "tau_post_ns": self.tau_post_ns,
-            "tau_stage_ns": self.tau_stage_ns,
-            "empty_output": self.empty_output,
-            "commit_lo": self.commit_lo,
-            "commit_hi": self.commit_hi,
-            "n_committed": self.n_committed,
+            "d": self.d, "campaign": self.campaign, "shot": self.shot,
+            "window_index": self.window_index, "K": self.K,
+            "tau_input_ns": self.tau_input_ns, "tau_match_ns": self.tau_match_ns,
+            "tau_post_ns": self.tau_post_ns, "tau_stage_ns": self.tau_stage_ns,
+            "empty_output": self.empty_output, "commit_lo": self.commit_lo,
+            "commit_hi": self.commit_hi, "n_committed": self.n_committed,
             "matching_weight": self.matching_weight,
             "syndrome_density": self.syndrome_density,
-            "window_depth": self.window_depth,
-            "retried": self.retried,
+            "window_depth": self.window_depth, "retried": self.retried,
             "confidence": self.confidence,
         }
 
 
 @dataclass(frozen=True)
 class DemComponent:
-    """One graphlike piece of a decomposed detector error mechanism."""
-
     p: float
     dets: Tuple[int, ...]
     obs: Tuple[int, ...]
@@ -77,8 +65,6 @@ class DemComponent:
 
 @dataclass(frozen=True)
 class WindowSpec:
-    """One window of the sliding-window schedule."""
-
     index: int
     start_layer: int
     end_layer: int
@@ -94,8 +80,6 @@ class WindowSpec:
 
 @dataclass
 class WindowMatcher:
-    """Prebuilt per-window matching object + post-matching lookup tables."""
-
     spec: WindowSpec
     matching: Any
     n_local: int
@@ -118,8 +102,6 @@ class WindowMatcher:
 
 @dataclass
 class CircuitBundle:
-    """Prebuilt Stim circuit, DEM, matcher, detector layout, window cache."""
-
     d: int
     circuit: Any
     dem: Any
@@ -219,8 +201,7 @@ def make_window_spec(bundle: CircuitBundle, start: int, w: int, C: int, index: i
 
 def build_window_dem(
     components: Sequence[DemComponent],
-    spec: WindowSpec,
-    *,
+    spec: WindowSpec, *,
     past_policy: str = "drop",
     num_observables: int = 1,
 ) -> Any:
