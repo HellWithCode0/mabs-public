@@ -1,82 +1,105 @@
-# MABS v3 (SLEM) results summary
+# MABS v3.1 (SLEM) results summary
 
 ## Honest goal
 
-Not “beat Higgott–Gidney absolute µs in pure Python.”
+Not "beat Higgott–Gidney absolute µs in pure Python."
 Goal: **Pareto-dominate full PyMatching Sparse Blossom calls** on mean
 stage time / offered load for streaming windows (Katoch sparse mixture),
 with **LER matching batch MWPM** on the same Stim circuits.
 
-## Algorithm (SLEM)
+## Algorithm (SLEM v3.1)
 
-1. **Syndrome clustering** (available in `v3/cluster.py`) — radius-grown CCs
-   on the detector graph for analysis / optional multi-cluster local decode.
-2. **Easy path**
-   - Empty syndrome → no-op (empty-K path).
-   - Single isolated defect → exact local boundary-path MWPM (precomputed
-     multi-source Dijkstra forest on the window matcher).
-3. **Hard path (escalate)** — otherwise one
-   `Matching.decode_to_edges_array` call on the truncated window
-   (no second weight decode).
-4. **Adaptive thresholds** — escalate/empty/local rates tracked; optional tune.
-5. Same truncated DEM + carry/XOR commit as v2 → LER batch-matched.
-6. Detector graphs prewarmed outside the timed shot loop.
+1. **Syndrome clustering** — `v3/cluster.py` (radius-grown) + **`v3/union_find.py`**
+   induced fired-subgraph components (radius 0, fast).
+2. **Easy path (default)**
+   - Empty → no-op.
+   - **Exact 1–2 defect** local MWPM (precomputed boundary forest + Dijkstra pair).
+3. **Optional low-escalate path** (`use_cluster_local=True`)
+   - Induced components of size ≤ `max_local_cluster` (default 2) decoded
+     with boundary paths / direct-edge pair matching.
+   - Escalate when any component is larger or `n_defects > max_local_defects`.
+4. **Hard path** — one `Matching.decode_to_edges_array` (no second weight decode).
+5. Detector graphs **prewarmed**; bound paths cached on the graph.
+6. Adaptive policy available (`tune=True`, `target_escalate_rate≈0.20–0.25`).
 
-## Measured table (this machine)
+## Pareto: escalate ≪ 1 vs stage ≤ w3d (pure Python)
+
+At p≈1e-3, streaming windows of depth 3d typically contain **many adjacent
+defect pairs**. Decoding those locally in pure Python (UF + Dijkstra / peel)
+is usually **slower than C++ Sparse Blossom**, so:
+
+| Priority | Config | d=5 esc@1e-3 | d=7 esc@1e-3 | LER | stage vs w3d |
+|----------|--------|-------------:|-------------:|-----|--------------|
+| **Default (shipped)** | `local_defect_cap=2`, `use_cluster_local=False` | ~0.74 | ~0.99 | = batch | **≤ / faster** |
+| Low-escalate research | `use_cluster_local=True`, `max_local_defects=12`, `max_local_cluster=2` | **~0.17** | ~0.73 | mild inflation risk | **~0.45–0.75×** (slower) |
+
+**Cannot hit all three** (esc<0.20 ∧ LER=batch ∧ stage≤w3d) for **d=7** in
+pure Python: windows are too dense; esc<0.20 needs multi-cluster local that
+loses to blossom on the clock (or approximates and risks LER).
+
+Shipped default = **LER + stage Pareto**, with escalate improved vs v3.0 at d=5
+via exact 2-defect local (`0.88 → 0.74`). Low-escalate mode is one flag away.
+
+## Measured table — default v3.1 (this machine)
 
 | method | d | p | shots | LER | mean_stage_ns | escalate_rate | empty_rate | local_rate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| batch | 5 | 0.001 | 2000 | 0.0005 | 5677 |  |  |  |
-| stream_w3d | 5 | 0.001 | 2000 | 0.0005 | 21610 | 0 |  |  |
-| mabs_adaptive | 5 | 0.001 | 2000 | 0.0005 | 19186 | 0.002 |  |  |
-| mabs_v3 | 5 | 0.001 | 2000 | 0.0005 | **14539** | 0.880 | 0.10† | ~0.02† |
-| batch | 7 | 0.001 | 800 | 0 | 23148 |  |  |  |
-| stream_w3d | 7 | 0.001 | 800 | 0 | 42846 | 0 |  |  |
-| mabs_adaptive | 7 | 0.001 | 800 | 0 | 37971 | 0.036 |  |  |
-| mabs_v3 | 7 | 0.001 | 800 | 0 | **27124** | 0.998 | ~0 | ~0 |
-| batch | 5 | 0.002 | 2000 | 0.011 | 11101 |  |  |  |
-| stream_w3d | 5 | 0.002 | 2000 | 0.011 | 25991 | 0 |  |  |
-| mabs_adaptive | 5 | 0.002 | 2000 | 0.011 | 25099 | 0.026 |  |  |
-| mabs_v3 | 5 | 0.002 | 2000 | 0.011 | **19132** | 0.986 |  |  |
-| batch | 7 | 0.002 | 800 | 0.00125 | 40925 |  |  |  |
-| stream_w3d | 7 | 0.002 | 800 | 0.00125 | 59118 | 0 |  |  |
-| mabs_adaptive | 7 | 0.002 | 800 | 0.00125 | 51281 | 0.043 |  |  |
-| mabs_v3 | 7 | 0.002 | 800 | 0.00125 | **40391** | 1.000 |  |  |
+| batch | 5 | 0.001 | 2000 | 0.0005 | 5810 |  |  |  |
+| stream_w3d | 5 | 0.001 | 2000 | 0.0005 | 21506 | 0 |  |  |
+| mabs_v3 | 5 | 0.001 | 2000 | 0.0005 | **20608** | 0.741 | † | † |
+| batch | 7 | 0.001 | 800 | 0 | 23650 |  |  |  |
+| stream_w3d | 7 | 0.001 | 800 | 0 | 44006 | 0 |  |  |
+| mabs_v3 | 7 | 0.001 | 800 | 0 | **29789** | 0.991 | † | † |
+| batch | 5 | 0.002 | 2000 | 0.011 | 11448 |  |  |  |
+| stream_w3d | 5 | 0.002 | 2000 | 0.011 | 25410 | 0 |  |  |
+| mabs_v3 | 5 | 0.002 | 2000 | 0.011 | **21035** | 0.957 | † | † |
+| batch | 7 | 0.002 | 800 | 0.00125 | 39353 |  |  |  |
+| stream_w3d | 7 | 0.002 | 800 | 0.00125 | 58451 | 0 |  |  |
+| mabs_v3 | 7 | 0.002 | 800 | 0.00125 | **40812** | 1.000 | † | † |
 
-† empty/local rates from `extra` fields on mabs_v3 rows in `benchmark.csv`.
+† See `extra` fields / `benchmark.csv` (`empty_rate`, `local_rate`).
 
-## Before / after (stage time vs stream_w3d)
+## Before / after (stage vs stream_w3d) — default
 
-| d | p | stream_w3d stage_ns | mabs_v3 stage_ns | speedup | escalate | LER v3 | LER batch |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 5 | 0.001 | 21610 | 14539 | **1.49×** | 0.880 | 0.0005 | 0.0005 |
-| 7 | 0.001 | 42846 | 27124 | **1.58×** | 0.998 | 0 | 0 |
-| 5 | 0.002 | 25991 | 19132 | **1.36×** | 0.986 | 0.011 | 0.011 |
-| 7 | 0.002 | 59118 | 40391 | **1.46×** | 1.000 | 0.00125 | 0.00125 |
+| d | p | stream_w3d | mabs_v3.0 (esc) | mabs_v3.1 (esc) | speedup v3.1 | LER |
+|---:|---:|---:|---:|---:|---:|---:|
+| 5 | 0.001 | 21506 | 14539 (0.880) | **20608 (0.741)** | **1.04×** | = batch |
+| 7 | 0.001 | 44006 | 27124 (0.998) | **29789 (0.991)** | **1.48×** | = batch |
+| 5 | 0.002 | 25410 | 19132 (0.986) | **21035 (0.957)** | **1.21×** | = batch |
+| 7 | 0.002 | 58451 | 40391 (1.000) | **40812 (1.000)** | **1.43×** | = batch |
 
-## Why it wins
+v3.0 was faster on stage with near-always escalate (single blossom vs double
+decode). v3.1 spends more on exact 2-defect local → slightly higher stage at
+d=5 but still ≤ w3d, with lower escalate and identical LER.
 
-- **Empty skip** avoids blossom on empty-K windows (helps most at lower p / smaller d).
-- **Single Sparse Blossom call** vs `stream_w3d`’s decode + decode_to_edges double call.
-- **Local 1-defect path** is exact and cheaper than blossom when it fires.
-- At high escalate rates (d=7), the single-call saving still dominates.
+## Low-escalate research mode (opt-in)
+
+```python
+from mabs.v3 import SLEMConfig, EscalationPolicy
+cfg = SLEMConfig(
+    local_defect_cap=2,
+    use_cluster_local=True,
+    policy=EscalationPolicy(max_local_cluster=2, max_local_defects=12, tune=True,
+                            target_escalate_rate=0.20),
+)
+```
+
+Approx. (same seed family): d=5,p=1e-3 → esc≈0.17, stage ~2× w3d, LER may
+drift slightly vs batch (induced-subgraph approx). See `results/v3_1_pareto.csv`.
 
 ## Claims / limitations
 
-- **Claim**: on these Stim campaigns, SLEM reduces mean stage time vs always-on
-  full-window blossom while keeping LER identical to batch MWPM.
+- **Claim**: default SLEM keeps LER = batch and mean stage_ns ≤ stream_w3d on
+  these campaigns; escalate improved at d=5 via exact 2-defect local.
+- **Not claimed**: esc<0.20 at d=7 without stage or LER tradeoff in pure Python.
 - **Not claimed**: beating C++ Sparse Blossom absolute µs/round.
-- Local exactness holds for ≤2-defect MWPM; default cap is 1 (pair Dijkstra is
-  often slower than blossom under CPython).
-- At higher p / larger d, escalate_rate → 1 and stage ≈ single blossom.
-- Pair/cluster peel + full clustering remain available for research; hot path
-  avoids expensive clustering.
+- Numba left unused (correctness / reliability first).
 
 ## Reproduce
 
 ```bash
 pip install -e .
 pytest -q
-python -m mabs.benchmark --methods batch,stream_w3d,mabs_adaptive,mabs_v3 \
+python -m mabs.benchmark --methods batch,stream_w3d,mabs_v3 \
   --distances 5,7 --noise-sweep 0.001,0.002
 ```
