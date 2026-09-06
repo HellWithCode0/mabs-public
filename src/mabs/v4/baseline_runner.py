@@ -28,18 +28,29 @@ def run_cascade_baseline(
 
     if config is None:
         config = CASCADEConfig(
-            clique_cap=2,  # stage Pareto default; raise for lower escalate
+            clique_cap=2,
             use_cache=True,
             use_clique=True,
-            use_component_clique=False,  # LER-safe
+            use_pair_lut=True,
+            use_peel=True,
+            use_component_clique=False,
             check_syndrome=True,
             prefer_correctness=True,
-            defer_hard=False,
             cache_escalations=True,
             cache_k_max=6,
+            cache_admit_after=2,
+            canonicalize_relative=False,
+            cost_aware=True,
+            adaptive_depth=False,
             prewarm_graphs=True,
         )
-    state = CASCADEState(cache=ExactPatternCache(max_size=config.cache_size))
+    state = CASCADEState(
+        cache=ExactPatternCache(
+            max_size=config.cache_size,
+            admit_after=config.cache_admit_after,
+            canonicalize_relative=config.canonicalize_relative,
+        )
+    )
     d = bundle.d
     w = max(1, int(round(config.window_factor * d)))
     C = max(1, int(round(config.commit_factor * d)))
@@ -86,15 +97,44 @@ def run_cascade_baseline(
             "empty_rate": state.empty_rate,
             "cache_rate": state.cache_rate,
             "clique_rate": state.clique_rate,
+            "pair_rate": state.pair_rate,
+            "peel_rate": state.peel_rate,
+            "residual_rate": state.residual_rate,
             "cache_hit_rate": state.cache_hit_rate,
             "n_windows": state.n_windows,
             "n_escalate": state.n_escalate,
             "n_empty": state.n_empty,
             "n_cache": state.n_cache,
             "n_clique": state.n_clique,
-            "n_defer_flush": state.n_defer_flush,
+            "n_pair": state.n_pair,
+            "n_peel": state.n_peel,
+            "n_residual": state.n_residual,
+            "n_gate_escalate": state.n_gate_escalate,
+            "n_cost_escalate": state.n_cost_escalate,
             "clique_cap": config.clique_cap,
+            "gate_max": config.resolved_gate_max(),
             "_preds": pred_arr,
             "warmup_shots": warm,
         },
+    )
+
+
+def run_cascade_adapt_baseline(
+    bundle,
+    syndromes: np.ndarray,
+    observables: np.ndarray,
+    *,
+    warmup: int = 0,
+) -> BaselineResult:
+    """Research method mabs_v4_adapt (adaptive_depth=True)."""
+    from mabs.v4.cascade import CASCADEConfig
+
+    cfg = CASCADEConfig(adaptive_depth=True)
+    return run_cascade_baseline(
+        bundle,
+        syndromes,
+        observables,
+        config=cfg,
+        method_name="mabs_v4_adapt",
+        warmup=warmup,
     )
