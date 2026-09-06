@@ -1,4 +1,4 @@
-"""Baseline runner for MABS v3 / SLEM."""
+"""Baseline runner for MABS v3.1 / SLEM."""
 
 from __future__ import annotations
 
@@ -17,14 +17,24 @@ def run_slem_baseline(
     config=None,
     method_name: str = "mabs_v3",
 ) -> BaselineResult:
-    """MABS v3 Sparse Local Escalation Matching (SLEM)."""
+    """MABS v3.1 Sparse Local Escalation Matching (SLEM)."""
     from mabs.v3.slem import SLEMConfig, SLEMState, stream_shot_slem_timed, prewarm_slem_graphs
     from mabs.v3.escalate import EscalationPolicy
 
     if config is None:
         config = SLEMConfig(
-            local_defect_cap=1,
-            policy=EscalationPolicy(tune=False),
+            local_defect_cap=2,
+            use_cluster_local=False,
+            check_syndrome=True,
+            prefer_correctness=True,
+            policy=EscalationPolicy(
+                max_local_cluster=2,
+                max_local_defects=12,
+                max_local_density=0.05,
+                cluster_radius=0,
+                target_escalate_rate=0.20,
+                tune=False,
+            ),
             prewarm_graphs=True,
         )
     state = SLEMState()
