@@ -5,7 +5,7 @@ error-correction control layer on Stim rotated surface-code memory + PyMatching.
 
 ## Honest goal (v3.1)
 
-**Not** "beat Higgott–Gidney absolute µs in pure Python."
+**Not** “beat Higgott–Gidney absolute µs in pure Python.”
 
 **Goal:** **Pareto-dominate full PyMatching Sparse Blossom calls** on mean stage
 time / offered load for streaming windows on the typical **sparse** workload
@@ -32,7 +32,7 @@ the same Stim circuits.
 | **Default** (`local_defect_cap=2`) | ~0.74 | = batch | ≤ / faster |
 | `use_cluster_local=True`, md=12 | ~0.17 | slight risk | slower (~2×) |
 
-Esc<0.20 ∧ LER=batch ∧ stage≤w3d is **not simultaneously achievable at d=7**
+Esc&lt;0.20 ∧ LER=batch ∧ stage≤w3d is **not simultaneously achievable at d=7**
 in pure Python; default ships the LER+stage point. Details: `results/v3_SUMMARY.md`.
 
 ## Install
@@ -86,7 +86,8 @@ src/mabs/
     slem.py           # SLEM streaming shot decoder
     cluster.py        # detector-graph clustering + bound-path cache
     union_find.py     # induced fired-subgraph UF
-    local_decode.py   # exact 1–2 + cluster peel + blossom helper
+    local_decode.py   # exact 1–2 + blossom helper (+ re-exports)
+    local_decode_ext.py  # induced peel ≤4 + syndrome check
     escalate.py       # adaptive escalation policy
   streaming_dem.py
   streaming_windows.py
