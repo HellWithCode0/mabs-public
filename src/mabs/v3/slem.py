@@ -1,7 +1,7 @@
 """Sparse Local Escalation Matching (SLEM) — MABS v3.1 streaming decoder.
 
 Default: exact 1–2 defect local MWPM + single blossom escalate.
-Optional cluster local via use_cluster_local (needs local_decode_induced).
+Optional cluster local via use_cluster_local (local_decode_ext).
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def stream_shot_slem_timed(
                         used_local = True
                 if not used_local and config.use_cluster_local:
                     try:
-                        from mabs.v3.local_decode import local_decode_induced, syndrome_cleared_by_edges
+                        from mabs.v3.local_decode_ext import local_decode_induced, syndrome_cleared_by_edges
                         if n_defects <= policy.max_local_defects:
                             local_edges = local_decode_induced(
                                 wm, buf, fired,
