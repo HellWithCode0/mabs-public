@@ -79,7 +79,7 @@ def write_summary_md(results, path: Path):
 
 def write_v3_summary(results, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["# MABS v3 (SLEM) results summary", "", "## Honest goal", "",
+    lines = ["# MABS v3.1 (SLEM) results summary", "", "## Honest goal", "",
              "Not beat Higgott–Gidney absolute µs in pure Python. Pareto-dominate full PyMatching",
              "Sparse Blossom on mean stage time with LER matching batch MWPM.", "",
              "| method | d | p | shots | LER | mean_stage_ns | escalate |",
@@ -102,7 +102,8 @@ def write_v3_summary(results, path: Path):
         esc = v3.extra.get("escalate_rate", float("nan")) if v3.extra else float("nan")
         lines.append(f"| {d} | {p:g} | {w3.mean_stage_ns:.1f} | {v3.mean_stage_ns:.1f} | {sp:.2f}× | {esc:.3f} | {v3.ler:.6g} | {batch.ler:.6g} |")
     lines += ["", "## Claims / limitations", "",
-              "- LER matches batch; stage beats always-on blossom on these campaigns.",
+              "- Default: LER=batch, stage≤w3d; escalate improved via exact 2-defect local.",
+              "- Low-escalate mode (use_cluster_local=True) can reach esc~0.17 at d=5 but slows stage.",
               "- Not claiming C++ Sparse Blossom absolute µs/round.", ""]
     path.write_text("\n".join(lines))
 
@@ -152,7 +153,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     distances = tuple(int(x) for x in args.distances.split(",") if x.strip())
     noises = tuple(float(x) for x in args.noise_sweep.split(",") if x.strip()) if args.noise_sweep.strip() else (args.noise,)
     methods = tuple(x.strip() for x in args.methods.split(",") if x.strip()) if args.methods.strip() else DEFAULT_METHODS
-    out_dir = Path(args.out_dir) if args.out_dir else Path(__file__).resolve().parents[2] / "results"
+    out_dir = Path(args.out_dir) if args.out_dir else Path(__file__).resolve().parents[3] / "results"
     if not out_dir.parent.exists(): out_dir = Path("results")
     print("MABS v3 benchmark")
     print(f"  distances={list(distances)} noises={list(noises)} methods={list(methods)} quick={args.quick}")
