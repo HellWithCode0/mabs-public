@@ -17,6 +17,8 @@ class DetectorGraph:
     # Precomputed nearest-boundary forest (multi-source Dijkstra).
     bound_dist: Dict[int, float] = field(default_factory=dict)
     bound_prev: Dict[int, int] = field(default_factory=dict)
+    # Precomputed edge lists u -> boundary (ndarray shape (e,2)), filled lazily.
+    bound_paths: Optional[List[Optional[np.ndarray]]] = None
 
     @staticmethod
     def from_matching(matching: Any, n_local: int) -> "DetectorGraph":
@@ -40,6 +42,7 @@ class DetectorGraph:
                     adj[vv].append((uu, wt))
         g = DetectorGraph(n_local=n_local, adj=adj, boundary=boundary)
         g._compute_boundary_forest()
+        g._precompute_bound_paths()
         return g
 
     def _compute_boundary_forest(self) -> None:
@@ -70,6 +73,30 @@ class DetectorGraph:
         self.bound_dist = dist
         self.bound_prev = prev
 
+    def _precompute_bound_paths(self) -> None:
+        """Materialize u→boundary edge lists for O(1) 1-defect decode."""
+        n = self.n_local
+        paths: List[Optional[np.ndarray]] = [None] * n
+        for u in self.bound_prev:
+            edges: List[Tuple[int, int]] = []
+            x: int = u
+            guard = 0
+            ok = False
+            while x != -1 and guard < n + 2:
+                guard += 1
+                p = self.bound_prev.get(x)
+                if p is None:
+                    break
+                if p == -1:
+                    edges.append((x, n))
+                    ok = True
+                    break
+                edges.append((x, p))
+                x = p
+            if ok and edges:
+                paths[u] = np.asarray(edges, dtype=np.int64).reshape(-1, 2)
+        self.bound_paths = paths
+
 
 @dataclass
 class Cluster:
@@ -96,6 +123,8 @@ def _get_graph_cache(wm: Any) -> DetectorGraph:
     if g is None or g.n_local != wm.n_local:
         g = DetectorGraph.from_matching(wm.matching, wm.n_local)
         setattr(wm, "_slem_graph", g)
+    elif g.bound_paths is None:
+        g._precompute_bound_paths()
     return g
 
 
