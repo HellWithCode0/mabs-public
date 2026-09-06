@@ -1,4 +1,4 @@
-"""MABS v4: CASCADE streaming QEC decoder (cache + clique + deferred escalation)."""
+"""MABS v4: CASCADE streaming QEC decoder (ExactPatternCache + clique + deferred escalation)."""
 
 from mabs.config import MABSConfig
 from mabs.algorithm import run_mabs, MABSResult
@@ -38,4 +38,4 @@ __all__ = [
     "stream_shot_cascade",
 ]
 
-__version__ = "4.0.0a1"
+__version__ = "4.0.1a2"

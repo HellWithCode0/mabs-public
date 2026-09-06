@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mabs"
-version = "4.0.1a1"
+version = "4.0.1a2"
 description = "MABS v4: CASCADE streaming QEC decoder (ExactPatternCache + clique MWPM)"
 readme = "README.md"
 requires-python = ">=3.10"
