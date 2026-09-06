@@ -1,7 +1,7 @@
-"""Sparse Local Escalation Matching (SLEM) — MABS v3 streaming decoder.
+"""Sparse Local Escalation Matching (SLEM) — MABS v3.1 streaming decoder.
 
-Fast path: empty no-op; single-defect local boundary path (exact).
-Hard path: single PyMatching Sparse Blossom call on the window.
+Default: exact 1–2 defect local MWPM + single blossom escalate.
+Optional cluster local via use_cluster_local (needs local_decode_induced).
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ class SLEMConfig:
     commit_factor: float = 1.0
     policy: EscalationPolicy = field(default_factory=EscalationPolicy)
     prefer_correctness: bool = True
-    # Exact local MWPM for 1 defect (boundary path). Cap 2 enables pair Dijkstra
-    # (often slower than blossom in CPython — keep default at 1).
-    local_defect_cap: int = 1
+    local_defect_cap: int = 2
+    use_cluster_local: bool = False
+    check_syndrome: bool = True
     prewarm_graphs: bool = True
 
 
@@ -57,7 +57,6 @@ class SLEMState:
 
 
 def prewarm_slem_graphs(bundle: CircuitBundle, window_depth: int, commit_stride: int) -> List:
-    """Build detector graphs for all window matchers (outside timed region)."""
     windows = ensure_window_schedule(bundle, window_depth, commit_stride)
     for wm in windows:
         _get_graph_cache(wm)
@@ -74,7 +73,6 @@ def stream_shot_slem_timed(
     shot: int = 0,
     observable_flips: Optional[np.ndarray] = None,
 ) -> ShotDecodeResult:
-    """Stream one shot with SLEM (empty / local ≤cap / blossom escalate)."""
     if config is None:
         config = SLEMConfig()
     if state is None:
@@ -132,11 +130,7 @@ def stream_shot_slem_timed(
                 state.n_empty += 1
             else:
                 used_local = False
-                if (
-                    local_cap > 0
-                    and n_defects <= local_cap
-                    and dens <= policy.max_local_density
-                ):
+                if local_cap > 0 and n_defects <= local_cap and dens <= policy.max_local_density:
                     local_edges = local_decode_few_defects(wm, buf, fired)
                     if local_edges is not None:
                         edges = local_edges
@@ -144,7 +138,24 @@ def stream_shot_slem_timed(
                         path = "local"
                         state.n_local += 1
                         used_local = True
-
+                if not used_local and config.use_cluster_local:
+                    try:
+                        from mabs.v3.local_decode import local_decode_induced, syndrome_cleared_by_edges
+                        if n_defects <= policy.max_local_defects:
+                            local_edges = local_decode_induced(
+                                wm, buf, fired,
+                                max_cluster=policy.max_local_cluster,
+                                max_defects=policy.max_local_defects,
+                            )
+                            if local_edges is not None:
+                                if (not config.check_syndrome) or syndrome_cleared_by_edges(wm.n_local, fired, local_edges):
+                                    edges = local_edges
+                                    weight = float(edges.shape[0])
+                                    path = "local"
+                                    state.n_local += 1
+                                    used_local = True
+                    except ImportError:
+                        pass
                 if not used_local:
                     edges, weight = blossom_edges_only(wm, buf)
                     escalated = True
@@ -152,9 +163,7 @@ def stream_shot_slem_timed(
                     state.n_escalate += 1
 
         with timers.post():
-            part_mask, n_committed = commit_window_edges(
-                edges, wm, carry, carry_forward=True
-            )
+            part_mask, n_committed = commit_window_edges(edges, wm, carry, carry_forward=True)
             obs_mask ^= part_mask
 
         state.n_windows += 1
@@ -165,24 +174,14 @@ def stream_shot_slem_timed(
         K = int(edges.shape[0])
         conf = 1.0 if path == "empty" else (0.85 if path == "local" else 0.35)
         rec = WindowRecord(
-            d=d,
-            campaign=campaign,
-            shot=shot,
-            window_index=w_idx,
-            K=K,
-            tau_input_ns=sample.tau_input_ns,
-            tau_match_ns=sample.tau_match_ns,
-            tau_post_ns=sample.tau_post_ns,
-            tau_stage_ns=sample.tau_stage_ns,
-            empty_output=(n_committed == 0),
-            commit_lo=wm.commit_start,
-            commit_hi=wm.commit_end,
-            n_committed=n_committed,
-            matching_weight=weight,
-            syndrome_density=dens,
+            d=d, campaign=campaign, shot=shot, window_index=w_idx, K=K,
+            tau_input_ns=sample.tau_input_ns, tau_match_ns=sample.tau_match_ns,
+            tau_post_ns=sample.tau_post_ns, tau_stage_ns=sample.tau_stage_ns,
+            empty_output=(n_committed == 0), commit_lo=wm.commit_start,
+            commit_hi=wm.commit_end, n_committed=n_committed,
+            matching_weight=weight, syndrome_density=dens,
             window_depth=wm.spec.end_layer - wm.spec.start_layer,
-            retried=escalated,
-            confidence=conf,
+            retried=escalated, confidence=conf,
         )
         setattr(rec, "escalated", escalated)
         setattr(rec, "n_clusters", 1 if n_defects else 0)
@@ -191,12 +190,7 @@ def stream_shot_slem_timed(
 
     pred = mask_to_obs_array(obs_mask, n_obs)
     if observable_flips is None:
-        return ShotDecodeResult(
-            predicted_observables=pred[: bundle.num_observables],
-            records=records,
-            logical_error=False,
-        )
-
+        return ShotDecodeResult(predicted_observables=pred[: bundle.num_observables], records=records, logical_error=False)
     obs = np.asarray(observable_flips, dtype=np.uint8).ravel()
     if obs.size and pred.size < obs.size:
         pad = np.zeros(obs.size, dtype=np.uint8)
@@ -205,8 +199,7 @@ def stream_shot_slem_timed(
     logical_error = bool(obs.size and np.any(pred[: obs.size] != obs))
     return ShotDecodeResult(
         predicted_observables=pred[: obs.size] if obs.size else pred[: bundle.num_observables],
-        records=records,
-        logical_error=logical_error,
+        records=records, logical_error=logical_error,
     )
 
 
