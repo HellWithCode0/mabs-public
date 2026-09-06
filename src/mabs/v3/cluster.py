@@ -105,7 +105,11 @@ def cluster_syndrome(
     *,
     radius: int = 1,
 ) -> List[Cluster]:
-    """Connected components of fired detectors through a radius-grown neighborhood."""
+    """Connected components of fired detectors through a radius-grown neighborhood.
+
+    Two defects are in the same cluster if a path of length ≤ ``radius`` hops
+    (through any detectors) connects them, or they share a grown ball.
+    """
     n = graph.n_local
     syn = np.asarray(syndrome, dtype=np.uint8).ravel()
     if syn.size < n:
@@ -118,6 +122,7 @@ def cluster_syndrome(
 
     fired_set = set(int(x) for x in fired.tolist())
 
+    # Grow neighborhood around all defects.
     nodes = set(fired_set)
     frontier = list(fired_set)
     for _ in range(max(0, int(radius))):
@@ -131,6 +136,7 @@ def cluster_syndrome(
                     nxt.append(v)
         frontier = nxt
 
+    # Union-find over defects connected via paths staying in ``nodes``.
     parent = {d: d for d in fired_set}
 
     def find(x: int) -> int:
@@ -163,6 +169,7 @@ def cluster_syndrome(
     for d in fired_set:
         comps.setdefault(find(d), []).append(d)
 
+    # Per-cluster grown nodes: ball of radius around that cluster's defects.
     out: List[Cluster] = []
     for defs in comps.values():
         cnodes = set(defs)
