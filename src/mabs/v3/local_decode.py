@@ -224,3 +224,15 @@ def blossom_edges_only(wm: Any, buf: np.ndarray) -> Tuple[np.ndarray, float]:
     if arr.ndim == 1:
         arr = arr.reshape(-1, 2)
     return arr, float(arr.shape[0])
+
+
+# v3.1 re-exports (induced / syndrome check live in local_decode_ext)
+try:
+    from mabs.v3.local_decode_ext import (  # noqa: E402
+        boundary_path_array,
+        decode_two_defects_fast,
+        local_decode_induced,
+        syndrome_cleared_by_edges,
+    )
+except ImportError:
+    pass
