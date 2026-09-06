@@ -1,6 +1,7 @@
-"""Exact syndrome-pattern cache (canonical import: mabs.v4.exact_pattern_cache).
+"""Exact syndrome-pattern cache (canonical module name).
 
-Re-exports from ``iso_cache`` where the ExactPatternCache implementation lives.
+Re-exports from ``iso_cache`` where the implementation currently lives
+for a smoother rename; prefer importing ``ExactPatternCache`` from here.
 """
 from mabs.v4.iso_cache import (  # noqa: F401
     ExactPatternCache,
