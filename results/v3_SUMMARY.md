@@ -2,7 +2,7 @@
 
 ## Honest goal
 
-Not "beat Higgott–Gidney absolute µs in pure Python."
+Not “beat Higgott–Gidney absolute µs in pure Python.”
 Goal: **Pareto-dominate full PyMatching Sparse Blossom calls** on mean
 stage time / offered load for streaming windows (Katoch sparse mixture),
 with **LER matching batch MWPM** on the same Stim circuits.
@@ -33,8 +33,8 @@ is usually **slower than C++ Sparse Blossom**, so:
 | **Default (shipped)** | `local_defect_cap=2`, `use_cluster_local=False` | ~0.74 | ~0.99 | = batch | **≤ / faster** |
 | Low-escalate research | `use_cluster_local=True`, `max_local_defects=12`, `max_local_cluster=2` | **~0.17** | ~0.73 | mild inflation risk | **~0.45–0.75×** (slower) |
 
-**Cannot hit all three** (esc<0.20 ∧ LER=batch ∧ stage≤w3d) for **d=7** in
-pure Python: windows are too dense; esc<0.20 needs multi-cluster local that
+**Cannot hit all three** (esc&lt;0.20 ∧ LER=batch ∧ stage≤w3d) for **d=7** in
+pure Python: windows are too dense; esc&lt;0.20 needs multi-cluster local that
 loses to blossom on the clock (or approximates and risks LER).
 
 Shipped default = **LER + stage Pareto**, with escalate improved vs v3.0 at d=5
@@ -91,7 +91,7 @@ drift slightly vs batch (induced-subgraph approx). See `results/v3_1_pareto.csv`
 
 - **Claim**: default SLEM keeps LER = batch and mean stage_ns ≤ stream_w3d on
   these campaigns; escalate improved at d=5 via exact 2-defect local.
-- **Not claimed**: esc<0.20 at d=7 without stage or LER tradeoff in pure Python.
+- **Not claimed**: esc&lt;0.20 at d=7 without stage or LER tradeoff in pure Python.
 - **Not claimed**: beating C++ Sparse Blossom absolute µs/round.
 - Numba left unused (correctness / reliability first).
 
