@@ -44,7 +44,7 @@ def test_predecode_and_calibrate():
 def test_should_retry_gate():
     # Easy window: no retry
     q = confidence_score(K=0, empty_output=True, matching_weight=0.0, syndrome_density=0.0, distance=5)
-    assert not should_retry(K=0, matching_weight=20.0, syndrome_density=0.0, Q=q, threshold=0.4, distance=5)
+    assert not should_retry(K=0, matching_weight=0.0, syndrome_density=0.0, Q=q, threshold=0.4, distance=5)
     # Mildly busy: soft-low Q but below hard gate → no retry
     assert not should_retry(K=5, matching_weight=20.0, syndrome_density=0.02, Q=0.2, threshold=0.4, distance=5)
     # Extreme hardness: retry
