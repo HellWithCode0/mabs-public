@@ -7,11 +7,13 @@ from mabs.adaptive import AdaptiveConfig
 from mabs.baselines import (BaselineResult, prepare_samples, run_adaptive_baseline,
     run_batch_baseline, run_fixed_streaming_baseline)
 from mabs.v3.baseline_runner import run_slem_baseline
+from mabs.v4.baseline_runner import run_cascade_baseline
+from mabs.v4.cascade import CASCADEConfig
 from mabs.confidence import ConfidenceConfig
 from mabs.streaming import build_surface_code_bundle
 from mabs.v3.slem import SLEMConfig
 
-DEFAULT_METHODS = ("batch", "stream_w3d", "stream_w2d", "mabs_adaptive", "mabs_v3")
+DEFAULT_METHODS = ("batch", "stream_w3d", "stream_w2d", "mabs_adaptive", "mabs_v3", "mabs_v4")
 
 def default_shot_budget(d: int, quick: bool = False) -> int:
     if quick:
@@ -41,6 +43,8 @@ def run_comparison(*, distances= (3,5,7), noise=1e-3, noises=None, rounds_factor
                 results.append(run_adaptive_baseline(bundle, syndromes, observables, adaptive=adaptive))
             if "mabs_v3" in method_set or "slem" in method_set:
                 results.append(run_slem_baseline(bundle, syndromes, observables, config=slem_cfg, method_name="mabs_v3"))
+            if "mabs_v4" in method_set or "cascade" in method_set:
+                results.append(run_cascade_baseline(bundle, syndromes, observables, config=CASCADEConfig(), method_name="mabs_v4"))
     return results
 
 def results_to_rows(results): return [r.as_dict() for r in results]
@@ -74,7 +78,8 @@ def write_summary_md(results, path: Path):
         esc = r.retry_rate
         if r.extra and "escalate_rate" in r.extra: esc = float(r.extra["escalate_rate"])
         lines.append(f"| {r.method} | {r.d} | {r.noise:g} | {r.shots} | {r.ler:.6g} | {r.logical_errors} | {r.mean_stage_ns:.1f} | {r.mean_shot_ns:.1f} | {esc:.3f} |")
-    lines += ["", "## Method notes", "", "- **mabs_v3 / SLEM**: empty skip + local 1-defect + single blossom escalate.", ""]
+    lines += ["", "## Method notes", "", "- **mabs_v3 / SLEM**: empty skip + local 1–2 + blossom escalate.",
+             "- **mabs_v4 / CASCADE**: iso-cache + clique MWPM (K≤6) + blossom escalate.", ""]
     path.write_text("\n".join(lines))
 
 def write_v3_summary(results, path: Path):
@@ -85,7 +90,7 @@ def write_v3_summary(results, path: Path):
              "| method | d | p | shots | LER | mean_stage_ns | escalate |",
              "|---|---:|---:|---:|---:|---:|---:|"]
     for r in results:
-        if r.method not in ("batch", "stream_w3d", "mabs_v3", "mabs_adaptive"): continue
+        if r.method not in ("batch", "stream_w3d", "mabs_v3", "mabs_v4", "mabs_adaptive"): continue
         esc = ""
         if r.extra and "escalate_rate" in r.extra: esc = f"{float(r.extra['escalate_rate']):.3f}"
         elif r.method != "batch": esc = f"{r.retry_rate:.3f}"
@@ -107,6 +112,53 @@ def write_v3_summary(results, path: Path):
               "- Not claiming C++ Sparse Blossom absolute µs/round.", ""]
     path.write_text("\n".join(lines))
 
+
+def write_v4_summary(results, path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# MABS v4 (CASCADE) results summary", "", "## Honest goal", "",
+             "Cut blossom escalate vs v3.1 via iso-cache + exact clique MWPM (K≤6),",
+             "keeping LER = batch and stage competitive with stream_w3d / v3.", "",
+             "| method | d | p | shots | LER | mean_stage_ns | escalate | cache_hit | clique |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for r in results:
+        if r.method not in ("batch", "stream_w3d", "mabs_v3", "mabs_v4"):
+            continue
+        esc = ""
+        ch = ""
+        cl = ""
+        if r.extra:
+            if "escalate_rate" in r.extra:
+                esc = f"{float(r.extra['escalate_rate']):.3f}"
+            if "cache_hit_rate" in r.extra:
+                ch = f"{float(r.extra['cache_hit_rate']):.3f}"
+            if "clique_rate" in r.extra:
+                cl = f"{float(r.extra['clique_rate']):.3f}"
+        elif r.method != "batch":
+            esc = f"{r.retry_rate:.3f}"
+        lines.append(f"| {r.method} | {r.d} | {r.noise:g} | {r.shots} | {r.ler:.6g} | {esc} | {ch} | {cl} |")
+    lines += ["", "## Before / after vs v3", "",
+              "| d | p | stream_w3d | mabs_v3 (esc) | mabs_v4 (esc) | v4 cache_hit | v4 clique | LER v4 | LER batch |",
+              "|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    by = {}
+    for r in results:
+        by.setdefault((r.d, r.noise), {})[r.method] = r
+    for (d, p), m in sorted(by.items()):
+        w3, v3, v4, batch = m.get("stream_w3d"), m.get("mabs_v3"), m.get("mabs_v4"), m.get("batch")
+        if not (w3 and v4 and batch):
+            continue
+        v3s = f"{v3.mean_stage_ns:.1f} ({float(v3.extra.get('escalate_rate', float('nan'))):.3f})" if v3 and v3.extra else (f"{v3.mean_stage_ns:.1f}" if v3 else "—")
+        esc4 = float(v4.extra.get("escalate_rate", float("nan"))) if v4.extra else float("nan")
+        ch4 = float(v4.extra.get("cache_hit_rate", float("nan"))) if v4.extra else float("nan")
+        cl4 = float(v4.extra.get("clique_rate", float("nan"))) if v4.extra else float("nan")
+        lines.append(f"| {d} | {p:g} | {w3.mean_stage_ns:.1f} | {v3s} | {v4.mean_stage_ns:.1f} ({esc4:.3f}) | {ch4:.3f} | {cl4:.3f} | {v4.ler:.6g} | {batch.ler:.6g} |")
+    lines += ["", "## Claims / limitations", "",
+              "- Default CASCADE: LER=batch via truncated DEM + carry XOR; hard path = per-window blossom.",
+              "- Escalate cut by cache + clique (K≤6); d=7 may still have high escalate under denser windows.",
+              "- `defer_hard=True` is experimental (falls back to per-window blossom when prefer_correctness).",
+              "- Not claiming C++ Sparse Blossom absolute µs/round.", ""]
+    path.write_text("\n".join(lines))
+
+
 def try_plot(results, out_dir: Path):
     try:
         import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
@@ -115,7 +167,7 @@ def try_plot(results, out_dir: Path):
     noises = sorted({r.noise for r in results})
     if not noises: return None
     p0 = noises[0]
-    methods = ["batch", "stream_w3d", "stream_w2d", "mabs_adaptive", "mabs_v3"]
+    methods = ["batch", "stream_w3d", "stream_w2d", "mabs_adaptive", "mabs_v3", "mabs_v4"]
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     for method in methods:
         xs, ys = [], []
@@ -162,8 +214,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     write_csv(results_to_rows(results), out_dir / "benchmark.csv")
     write_summary_md(results, out_dir / "SUMMARY.md")
     write_v3_summary(results, out_dir / "v3_SUMMARY.md")
+    write_v4_summary(results, out_dir / "v4_SUMMARY.md")
     plot_path = try_plot(results, out_dir)
     print(); print(f"Wrote {out_dir / 'benchmark.csv'}"); print(f"Wrote {out_dir / 'SUMMARY.md'}"); print(f"Wrote {out_dir / 'v3_SUMMARY.md'}")
+    print(f"Wrote {out_dir / 'v4_SUMMARY.md'}")
     if plot_path: print(f"Wrote {plot_path}")
     return 0
 
