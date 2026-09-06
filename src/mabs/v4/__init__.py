@@ -5,21 +5,31 @@ from mabs.v4.cascade import (
     CASCADEState,
     stream_shot_cascade,
     stream_shot_cascade_timed,
+    stream_shot_cascade_adapt,
     prewarm_cascade_graphs,
 )
-from mabs.v4.iso_cache import IsoCache, canonicalize_defects
+from mabs.v4.exact_pattern_cache import ExactPatternCache, IsoCache, canonicalize_defects
 from mabs.v4.clique_mwpm import clique_mwpm_edges, clique_decode_window
+from mabs.v4.commit_action import CommitAction, edges_to_commit_action, apply_commit_action
+from mabs.v4.pair_lut import PairPathLUT, decode_pair_cached
 
 __all__ = [
     "CASCADEConfig",
     "CASCADEState",
     "stream_shot_cascade",
     "stream_shot_cascade_timed",
+    "stream_shot_cascade_adapt",
     "prewarm_cascade_graphs",
+    "ExactPatternCache",
     "IsoCache",
     "canonicalize_defects",
     "clique_mwpm_edges",
     "clique_decode_window",
+    "CommitAction",
+    "edges_to_commit_action",
+    "apply_commit_action",
+    "PairPathLUT",
+    "decode_pair_cached",
 ]
 
-__version__ = "4.0.0a1"
+__version__ = "4.1.0a1"

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mabs"
-version = "4.0.1a3"
-description = "MABS v4: CASCADE streaming QEC decoder (ExactPatternCache + clique MWPM); 4.0.1a3 monolithic cli_bench (no b64 loader)"
+version = "4.1.0a1"
+description = "MABS v4.1: CASCADE priority list (CommitAction cache, pair LUT, peel/residual); 4.1.0a1"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -25,8 +25,8 @@ dev = ["pytest", "matplotlib"]
 mabs = "mabs.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/HellWithCode0/mabs"
-Repository = "https://github.com/HellWithCode0/mabs"
+Homepage = "https://github.com/HellWithCode0/mabs-public"
+Repository = "https://github.com/HellWithCode0/mabs-public"
 
 [tool.setuptools.packages.find]
 where = ["src"]
