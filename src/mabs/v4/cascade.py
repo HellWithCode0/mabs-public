@@ -3,7 +3,7 @@
 MABS v4 streaming decoder:
 
 Easy path:
-  empty → iso-cache (global detector key) → exact few-defect / clique MWPM
+  empty → ExactPatternCache (exact global/local key) → exact few-defect / clique MWPM
   (default ``clique_cap=2`` for stage Pareto; raise to 3–6 to cut escalate further)
 
 Hard path:
@@ -35,7 +35,7 @@ from mabs.v3.local_decode import (
 )
 from mabs.v3.union_find import fired_induced_components
 from mabs.v4.clique_mwpm import clique_mwpm_edges
-from mabs.v4.iso_cache import IsoCache
+from mabs.v4.exact_pattern_cache import ExactPatternCache
 
 
 @dataclass
@@ -68,7 +68,7 @@ class CASCADEState:
     n_escalate: int = 0
     n_defer_flush: int = 0
     graphs_ready: bool = False
-    cache: IsoCache = field(default_factory=lambda: IsoCache(max_size=10_000))
+    cache: ExactPatternCache = field(default_factory=lambda: ExactPatternCache(max_size=10_000))
 
     @property
     def escalate_rate(self) -> float:
@@ -150,7 +150,7 @@ def stream_shot_cascade_timed(
     if config is None:
         config = CASCADEConfig()
     if state is None:
-        state = CASCADEState(cache=IsoCache(max_size=config.cache_size))
+        state = CASCADEState(cache=ExactPatternCache(max_size=config.cache_size))
     elif state.cache.max_size != config.cache_size:
         state.cache.max_size = config.cache_size
 
