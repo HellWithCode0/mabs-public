@@ -1,4 +1,4 @@
-"""MABS v3: Sparse Local Escalation Matching for streaming QEC."""
+"""MABS v4: CASCADE streaming QEC decoder (cache + clique + deferred escalation)."""
 
 from mabs.config import MABSConfig
 from mabs.algorithm import run_mabs, MABSResult
@@ -8,6 +8,7 @@ from mabs.reporting import boundary_ratios, boundary_factor, offered_load, SMeas
 from mabs.confidence import confidence_score, ConfidenceConfig, calibrate_auto_threshold
 from mabs.adaptive import AdaptiveConfig, AdaptiveState, stream_shot_adaptive_timed
 from mabs.v3.slem import SLEMConfig, SLEMState, stream_shot_slem
+from mabs.v4.cascade import CASCADEConfig, CASCADEState, stream_shot_cascade
 
 __all__ = [
     "MABSConfig",
@@ -32,6 +33,9 @@ __all__ = [
     "SLEMConfig",
     "SLEMState",
     "stream_shot_slem",
+    "CASCADEConfig",
+    "CASCADEState",
+    "stream_shot_cascade",
 ]
 
-__version__ = "3.1.0a1"
+__version__ = "4.0.0a1"
