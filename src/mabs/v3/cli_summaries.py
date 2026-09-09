@@ -29,14 +29,14 @@ def write_summary_md(results, path: Path):
         "- **stream_w3d**: single `decode_to_edges_array` per window (fair baseline; no double blossom).",
         "",
     ]
-    path.write_text("\n".join(lines))
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 def write_v3_summary(results, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# MABS v3.1 (SLEM) results summary", "", "## Honest goal", "",
         "Not beat Higgott-Gidney absolute us in pure Python. Pareto-dominate full PyMatching",
         "Sparse Blossom on mean stage time with LER matching batch MWPM.", ""]
-    path.write_text("\n".join(lines))
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 def write_v4_summary(results, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,4 +68,4 @@ def write_v4_summary(results, path: Path):
     lines.insert(-3, "- **Claim:** LER = batch; N_disagree = 0.")
     lines.insert(-3, claim)
     lines.insert(-3, "")
-    path.write_text("\n".join(lines))
+    path.write_text("\n".join(lines), encoding="utf-8")

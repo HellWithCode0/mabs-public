@@ -127,21 +127,46 @@ def test_pair_lut_lazy_reuse():
     assert syndrome_cleared_by_edges(wm.n_local, np.array([a, b]), e2)
 
 
-def test_defect_gate_escalates():
-    """n_defects > gate_max → gate_escalate (priority 3)."""
-    d, p = 3, 1e-3
+def _dense_first_window(d=3, p=1e-3, n_fire=20):
+    """Bundle plus a syndrome that fires many defects inside window 0."""
     bundle = build_surface_code_bundle(d=d, noise=p, rounds=10 * d)
     syn = np.zeros(bundle.n_detectors, dtype=np.uint8)
-    # fire many defects in first window
-    wms = ensure_window_schedule(bundle, 3 * d, d)
-    wm = wms[0]
-    n_fire = min(20, wm.n_local)
-    syn[wm.det_lo : wm.det_lo + n_fire] = 1
+    wm = ensure_window_schedule(bundle, 3 * d, d)[0]
+    k = min(n_fire, wm.n_local)
+    syn[wm.det_lo : wm.det_lo + k] = 1
     obs = np.zeros(bundle.num_observables, dtype=np.uint8)
+    return bundle, syn, obs
+
+
+def test_defect_gate_escalates_full_mode():
+    """FULL: n_defects > gate_max → gate_escalate (4.1 priority 3).
+
+    gate_max belongs to the FULL route. FLASH has no cost-routing stage to
+    short-circuit, so the gate counter is a FULL-mode counter and the config
+    must say so.
+    """
+    bundle, syn, obs = _dense_first_window()
     state = CASCADEState()
-    cfg = CASCADEConfig(gate_max=4, use_peel=False, use_cache=False, clique_cap=2)
+    cfg = CASCADEConfig(
+        mode="full", gate_max=4, use_peel=False, use_cache=False, clique_cap=2
+    )
+    assert cfg.is_flash() is False
     stream_shot_cascade(bundle, syn, config=cfg, state=state, observable_flips=obs)
     assert state.n_gate_escalate >= 1
+    assert state.route_counts.get("gate_escalate", 0) >= 1
+
+
+def test_flash_escalates_dense_window_without_gate_counter():
+    """FLASH: K>=3 goes straight to blossom, and never labels it gate_escalate."""
+    bundle, syn, obs = _dense_first_window()
+    state = CASCADEState()
+    cfg = CASCADEConfig(gate_max=4, clique_cap=2)
+    assert cfg.is_flash() is True
+    stream_shot_cascade(bundle, syn, config=cfg, state=state, observable_flips=obs)
+    assert state.n_escalate >= 1
+    assert state.route_counts.get("escalate", 0) >= 1
+    assert state.n_gate_escalate == 0
+    assert state.n_cost_escalate == 0
 
 
 def test_apply_commit_action_matches_edges():

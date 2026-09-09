@@ -130,3 +130,46 @@ def test_flash_ler_agrees_batch_d3():
 
 def test_numba_optional_flag():
     assert isinstance(has_numba(), bool)
+
+
+def test_flash_records_true_syndrome_density():
+    """syndrome_density must not inherit the cap=3 of the capped defect scan.
+
+    The FLASH scan stops at three defects because that is all the route needs.
+    syndrome_density is a reported record field, so it has to carry the real
+    count, not the cap.
+    """
+    d = 3
+    bundle = build_surface_code_bundle(d=d, noise=0.001, rounds=10 * d)
+    wms = ensure_window_schedule(bundle, 3 * d, d)
+    wm = wms[0]
+    n_fire = min(12, wm.n_local)
+    assert n_fire > 3, "need more than cap defects for this test to mean anything"
+    syn = np.zeros(bundle.n_detectors, dtype=np.uint8)
+    syn[wm.det_lo : wm.det_lo + n_fire] = 1
+    state = CASCADEState()
+    out = stream_shot_cascade(bundle, syn, config=CASCADEConfig(), state=state)
+    rec = out.records[0]
+    assert rec.syndrome_density == pytest.approx(n_fire / wm.n_local)
+    assert rec.syndrome_density > 3.0 / wm.n_local
+
+
+def test_flash_sticky_records_true_syndrome_density():
+    """The sticky path never counts defects, so it must not report zero either."""
+    d = 3
+    bundle = build_surface_code_bundle(d=d, noise=0.001, rounds=10 * d)
+    wms = ensure_window_schedule(bundle, 3 * d, d)
+    syn = np.zeros(bundle.n_detectors, dtype=np.uint8)
+    syn[wms[0].det_lo : wms[0].det_lo + 8] = 1
+    n_fire_1 = 5
+    syn[wms[1].det_lo : wms[1].det_lo + n_fire_1] = 1
+    state = CASCADEState()
+    out = stream_shot_cascade(
+        bundle, syn, config=CASCADEConfig(sticky_blossom=True), state=state
+    )
+    assert state.n_sticky >= 1
+    sticky_records = [
+        r for r in out.records if getattr(r, "cascade_path", "") == "sticky"
+    ]
+    assert sticky_records, "expected at least one sticky window"
+    assert all(r.syndrome_density > 0.0 for r in sticky_records)

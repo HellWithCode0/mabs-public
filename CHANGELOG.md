@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased — correctness and reporting fixes
+
+Aryaman Katoch: fixes found by auditing the package against the manuscript.
+
+- **`syndrome_density` was truncated in FLASH.** The hot path stops the defect
+  scan at `cap=3`, which is all the route needs, but the record field inherited
+  the cap, so every busy window reported at most `3 / n_local`. The sticky path
+  reported `0.0`. Density is now counted once per window, outside every timed
+  interval, so the record is right and `tau_match` carries no instrumentation.
+- **Both CLI entry points crashed on Windows.** `python -m mabs` died with
+  UnicodeEncodeError on the first line containing pi, and
+  `python -m mabs.benchmark` died writing `SUMMARY.md` after finishing the run.
+  Report writes now specify `encoding="utf-8"` and the entry points reconfigure
+  stdio (`mabs._stdio.force_utf8_stdio`).
+- **The generated `results/v4_SUMMARY.md` described version 4.0.1a2.** Running
+  the documented benchmark command overwrote the curated 4.2 file with stale
+  copy that still advertised `defer_hard`. The writer now emits the FLASH route,
+  labels `cache` / `clique` as FULL-mode counters, and prints the mode it ran.
+- **`gate_max` is a FULL-mode knob.** `test_defect_gate_escalates` passed a
+  FLASH config and asserted a FULL counter, so it failed. Split into a FULL test
+  and a FLASH test that pins the K>=3 behaviour.
+- `stream_shot_cascade_adapt` copies the caller's config instead of setting
+  `adaptive_depth` on it in place.
+- New reporting, following the manuscript's Table I checklist:
+  `paired_overhead` (tau_stage - tau_match on the same rows),
+  `boundary_slope_contrast` (Delta alpha_I(q) with the ratio-slope identity
+  residual), `host_metadata`, and `SArch` / `deadline_burden`, which refuses a
+  deadline reading without slack, round duration and an attributed residual.
+  `SMeas` gained `boundary`, `execution`, `statistic`, `fit_interval`,
+  `fit_model` and `host`.
+- New tests: reporting spec (10), FLASH density guards (2), and a parity guard
+  that holds the inlined FLASH hot path to `route_window_flash`, which nothing
+  had exercised. Suite is 60 to 75 tests.
+- Added `.gitignore`.
+
 ## 4.2.0a1 — CASCADE FLASH (default)
 
 Aryaman Katoch: make shortcuts cheaper than one fair blossom.

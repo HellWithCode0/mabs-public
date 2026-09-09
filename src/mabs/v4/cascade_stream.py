@@ -1,5 +1,6 @@
 """CASCADE streaming shot decode (v4.2 FLASH default + FULL opt-in)."""
 from __future__ import annotations
+from dataclasses import replace
 from typing import Optional
 import numpy as np
 from mabs.streaming import CircuitBundle, ShotDecodeResult, WindowRecord
@@ -121,13 +122,11 @@ def stream_shot_cascade_timed(
                     path, edges, action, escalated, weight = route_window_flash_sticky(
                         wm, buf, state=state
                     )
-                    dens = 0.0
                 else:
                     # Inlined FLASH route (avoid call overhead on hot path)
                     n_defects = extract_defects(
                         buf, n, defect_buf, prefer_numba=prefer_numba, cap=3
                     )
-                    dens = float(n_defects) / float(n) if n else 0.0
                     if n_defects == 0:
                         path, edges, action, escalated, weight = (
                             "empty", _EMPTY_EDGES, _EMPTY_ACTION, False, 0.0
@@ -190,6 +189,11 @@ def stream_shot_cascade_timed(
                     )
                 obs_mask ^= part_mask
             state.n_windows += 1
+            # Instrumentation only, so it sits outside every timed interval.
+            # The capped extract stops at 3 and the sticky path never counts,
+            # so neither can supply the true density; buf still holds the
+            # window syndrome here because commit touches only carry.
+            dens = float(np.count_nonzero(buf[:n])) / float(n) if n else 0.0
             sample = timers.sample()
             conf = {
                 "empty": 1.0,
@@ -225,7 +229,6 @@ def stream_shot_cascade_timed(
                 carry[lo:hi] = 0
                 fired = np.flatnonzero(buf[:n])
                 n_defects = int(fired.size)
-                dens = float(n_defects) / float(n) if n else 0.0
             with timers.match():
                 path, edges, action, escalated, weight = route_window(
                     wm, buf, fired, n_defects, config=config, state=state, topo=topo, gate_max=gate_max,
@@ -237,6 +240,8 @@ def stream_shot_cascade_timed(
                     part_mask, n_committed = commit_window_edges(edges, wm, carry, carry_forward=True)
                 obs_mask ^= part_mask
             state.n_windows += 1
+            # Instrumentation only, so it sits outside every timed interval.
+            dens = float(n_defects) / float(n) if n else 0.0
             sample = timers.sample()
             conf = {
                 "empty": 1.0, "cache": 0.9, "pair": 0.88, "clique": 0.85, "peel": 0.8,
@@ -275,10 +280,14 @@ stream_shot_cascade = stream_shot_cascade_timed
 
 
 def stream_shot_cascade_adapt(bundle, syndrome, **kwargs):
-    """Research entry: CASCADE with adaptive_depth=True."""
+    """Research entry: CASCADE with adaptive_depth=True.
+
+    Copies the caller's config rather than mutating it, so a config reused for
+    a non-adaptive run in the same campaign is not silently switched over.
+    """
     config = kwargs.pop("config", None)
     if config is None:
         config = CASCADEConfig(adaptive_depth=True)
-    else:
-        config.adaptive_depth = True
+    elif not config.adaptive_depth:
+        config = replace(config, adaptive_depth=True)
     return stream_shot_cascade_timed(bundle, syndrome, config=config, **kwargs)
