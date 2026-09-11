@@ -1,5 +1,53 @@
 # Changelog
 
+## 4.3.0a1: certified CLUSTER route, faster no-numba scan
+
+Aryaman Katoch: route on cluster shape, not on defect count, and prove it.
+
+- **CLUSTER route** (module `mabs.v4.cluster_route`; `cluster_route=None` by
+  default, meaning on exactly when numba is importable; bench methods
+  `mabs_v4_cluster` and `mabs_v4_flash` force it on or off). A K>=3 window whose
+  induced clusters are all singletons or adjacent pairs is answered from the
+  FLASH lookup tables when an LP-duality certificate proves the per-cluster
+  answer is a minimum-weight matching for the whole window. Near ties are
+  refused by a 0.05 margin. At prewarm, any detector or pair whose near-optimal
+  paths commit different effects is refused too (0 such answers at d=3,5,7,9).
+  Everything else falls back to blossom.
+- With numba the whole route is one compiled kernel over flat action tables;
+  carry flips are applied in the post stage. Kernels are resolved at prewarm so
+  no JIT or cache load can land in a timed interval.
+- Measured (Windows laptop, numba 0.67, 3 reps, one method per process), mean
+  stage per window: d=5 p=1e-3 9.82 to 6.11 us, d=5 p=2e-3 13.48 to 11.64 us,
+  d=7 p=1e-3 19.53 to 16.48 us. Fair `stream_w3d` is 11.89, 14.71 and 21.65 us,
+  so FLASH+CLUSTER now runs below it in all three cells. Escalations fall from
+  0.737, 0.950 and 0.995 of windows to 0.135, 0.437 and 0.457.
+- Correctness: N_disagree = 0 against batch over 4,100 shots at d=3,5,7,9 and
+  p=1e-3, 2e-3. Before the certificate existed, plain per-cluster decoding got
+  7 of 847 windows wrong, every one strictly heavier than blossom's answer; the
+  certificate rejects all 7 and passed 840 of 840 of the rest.
+- Denser cells roughly break even, since most windows fail the shape test:
+  d=3 p=1e-3 3.75 to 3.39 us, d=7 p=2e-3 27.49 to 28.52 us (inside the
+  run-to-run range), d=9 p=1e-3 36.78 to 35.96 us. No cell loses beyond noise.
+- Without numba the numpy reference path is about 2x slower than blossom, which
+  is why the auto default turns the route on only when numba is importable.
+- **No-numba defect scan.** The capped scan used a Python loop over the window
+  buffer, 10.4 us per window at d=5, more than the blossom call it routed to.
+  It is now one `np.flatnonzero` call. FLASH stage time without numba drops 43,
+  25 and 31 percent in the three cells above and is now level with
+  `stream_w3d` (it was 1.7x slower).
+- Review fixes: the fused CommitAction parity-reduces its carry globals;
+  compiling the route's tables no longer writes into the shared FLASH LUT;
+  `extract_defects` keeps its historical meaning for `cap < 1`; the generated v4
+  summary reports the cluster rate and a `mabs_v4_cluster` column.
+- The timing protocol matters: running several methods in one process on
+  separate bundles made them evict each other's caches and inflated whichever
+  process ran more methods by 8 to 24 percent. All numbers above come from one
+  method per process.
+- New tests: `test_v4_cluster_route.py` (shape test vs union-find, all-pairs
+  table vs Dijkstra, certificate accept / reject / tie, degeneracy guard on a
+  constructed case, commit identity vs blossom for both paths, numba vs numpy,
+  LER = batch) and two more parity cases. Suite is 93 tests with numba.
+
 ## Unreleased — correctness and reporting fixes
 
 Aryaman Katoch: fixes found by auditing the package against the manuscript.

@@ -14,6 +14,9 @@ from mabs.v4.clique_mwpm import clique_mwpm_edges
 from mabs.v4.exact_pattern_cache import ExactPatternCache
 from mabs.v4.pair_lut import decode_pair_cached, get_pair_lut
 from mabs.v4.flash_lut import prewarm_flash_lut, get_flash_lut
+from mabs.v4.cluster_route import (
+    ClusterStats, get_cluster_table, has_numba as cluster_has_numba, warm_kernels,
+)
 
 
 # Estimated Python control costs (µs-equivalent units) vs one blossom budget.
@@ -47,6 +50,17 @@ class CASCADEConfig:
     # None → 2 at prewarm (hop radius); 0 disables pair prewarm
     prewarm_pair_radius: Optional[int] = None
     prefer_numba: bool = True
+    # CLUSTER route (FLASH only): answer a K>=3 window from per-cluster LUT hits
+    # when every induced cluster is a singleton or a pair AND an LP-duality
+    # certificate proves the decomposed matching is minimum weight. Anything
+    # else falls back to blossom. See mabs.v4.cluster_route.
+    # None (default) means auto: on exactly when numba is importable. The
+    # compiled route is what pays; the numpy reference is about 2x slower than
+    # the blossom call it replaces.
+    cluster_route: Optional[bool] = None
+    cluster_margin: float = 0.05
+    # No all-pairs table (so no CLUSTER route) for windows above this size.
+    cluster_max_nodes: int = 2500
     # --- FULL / shared ---
     # Default 2: exact 1–2 defect path (stage Pareto).
     clique_cap: int = 2
@@ -97,6 +111,11 @@ class CASCADEConfig:
         # Default hop radius 4: covers most K=2 near pairs at d=5 (stage Pareto)
         return 4
 
+    def resolved_cluster_route(self) -> bool:
+        if self.cluster_route is None:
+            return bool(cluster_has_numba())
+        return bool(self.cluster_route)
+
 
 @dataclass
 class CASCADEState:
@@ -112,6 +131,8 @@ class CASCADEState:
     n_cost_escalate: int = 0
     n_sticky: int = 0
     n_boundary: int = 0
+    n_cluster: int = 0
+    cluster_stats: ClusterStats = field(default_factory=ClusterStats)
     # Route decision counters
     route_counts: Dict[str, int] = field(default_factory=dict)
     graphs_ready: bool = False
@@ -167,6 +188,10 @@ class CASCADEState:
     def boundary_rate(self) -> float:
         return 0.0 if self.n_windows == 0 else self.n_boundary / self.n_windows
 
+    @property
+    def cluster_rate(self) -> float:
+        return 0.0 if self.n_windows == 0 else self.n_cluster / self.n_windows
+
 
 def prewarm_cascade_graphs(
     bundle: CircuitBundle,
@@ -190,6 +215,12 @@ def prewarm_cascade_graphs(
                     get_flash_lut(wm)
             else:
                 get_flash_lut(wm)
+            if cfg.resolved_cluster_route():
+                # All-pairs table for the certificate; None above the size cap.
+                # Then resolve the compiled kernels so no JIT or cache load can
+                # land inside a timed interval of a measured shot.
+                tab = get_cluster_table(wm, max_nodes=cfg.cluster_max_nodes)
+                warm_kernels(wm, tab, bundle.n_detectors)
     return windows
 
 

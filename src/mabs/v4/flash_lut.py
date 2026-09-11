@@ -76,8 +76,21 @@ def extract_defects(
             return int(_njit_scan_defects_cap(buf, n, out, int(cap)))
         return int(_njit_scan_defects(buf, n, out))
     if cap is not None:
-        k = 0
         c = int(cap)
+        if c >= 1:
+            # One C-level pass, then keep the first `cap`. The early-exit Python
+            # loop this replaces indexed the buffer element by element and, on
+            # a sparse syndrome, walked most of it: 10.4 us per window at d=5
+            # against 1.8 us here, more than the blossom call it routed to.
+            fired = np.flatnonzero(buf[:n])
+            k = int(fired.size)
+            take = k if k < c else c
+            if take:
+                out[:take] = fired[:take]
+            return take
+        # cap < 1 is never used by the router; keep the historical semantics
+        # (and the numba kernel's) exactly rather than inventing new ones.
+        k = 0
         for i in range(n):
             if buf[i]:
                 if k < c:

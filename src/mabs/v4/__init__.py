@@ -37,4 +37,4 @@ __all__ = [
     "has_numba",
 ]
 
-__version__ = "4.2.0a1"
+__version__ = "4.3.0a1"

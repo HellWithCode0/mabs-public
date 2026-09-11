@@ -65,9 +65,9 @@ def _reference_shot(bundle, syndrome, windows, config, state):
     return mask_to_obs_array(obs_mask, max(int(bundle.num_observables), 1))
 
 
-def _run_parity(sticky: bool):
+def _run_parity(sticky: bool, cluster: bool = False):
     d, p, shots = 3, 2e-3, 40
-    cfg = CASCADEConfig(sticky_blossom=sticky)
+    cfg = CASCADEConfig(sticky_blossom=sticky, cluster_route=cluster)
 
     # Two bundles, because a pair-LUT fill on one run would otherwise warm the
     # LUT the other run reads and turn a pair_fill into a pair.
@@ -99,9 +99,15 @@ def _run_parity(sticky: bool):
     assert inline_state.n_pair == ref_state.n_pair
     assert inline_state.n_boundary == ref_state.n_boundary
     assert inline_state.n_sticky == ref_state.n_sticky
+    assert inline_state.n_cluster == ref_state.n_cluster
+    assert inline_state.cluster_stats.as_dict() == ref_state.cluster_stats.as_dict()
     # The run must actually reach the branches this test is guarding.
     assert inline_state.route_counts.get("escalate", 0) > 0
     assert inline_state.n_empty > 0
+    if cluster:
+        assert inline_state.n_cluster > 0
+    else:
+        assert inline_state.n_cluster == 0
 
 
 def test_inline_flash_matches_route_window_flash():
@@ -110,3 +116,11 @@ def test_inline_flash_matches_route_window_flash():
 
 def test_inline_flash_matches_route_window_flash_sticky():
     _run_parity(sticky=True)
+
+
+def test_inline_flash_matches_route_window_flash_cluster():
+    _run_parity(sticky=False, cluster=True)
+
+
+def test_inline_flash_matches_route_window_flash_cluster_sticky():
+    _run_parity(sticky=True, cluster=True)

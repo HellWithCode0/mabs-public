@@ -1,4 +1,4 @@
-"""MABS v4.2: CASCADE FLASH streaming QEC decoder."""
+"""MABS v4.3: CASCADE FLASH streaming QEC decoder with a certified CLUSTER route."""
 
 from mabs.config import MABSConfig
 from mabs.algorithm import run_mabs, MABSResult
@@ -60,4 +60,4 @@ __all__ = [
     "stream_shot_cascade",
 ]
 
-__version__ = "4.2.0a1"
+__version__ = "4.3.0a1"

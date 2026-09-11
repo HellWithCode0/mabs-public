@@ -7,6 +7,7 @@ from mabs.v4.clique_mwpm import clique_mwpm_edges
 from mabs.v4.commit_action import CommitAction, edges_to_commit_action
 from mabs.v4.exact_pattern_cache import ExactPatternCache
 from mabs.v4.flash_lut import FlashCommitLUT, get_flash_lut
+from mabs.v4.cluster_route import get_cluster_table, route_clusters_buf
 from mabs.v4.cascade_core import (
     CASCADEConfig, CASCADEState,
     _COST_CLIQUE_BASE, _COST_CLIQUE_K, _COST_PAIR,
@@ -71,6 +72,17 @@ def route_window_flash(
         if config.sticky_blossom:
             state.sticky_this_shot = True
         return "escalate", edges, None, True, weight
+
+    if config.resolved_cluster_route():
+        tab = get_cluster_table(wm, max_nodes=config.cluster_max_nodes)
+        act = route_clusters_buf(
+            buf, wm.n_local, tab, lut, margin=config.cluster_margin,
+            stats=state.cluster_stats, prefer_numba=config.prefer_numba,
+        )
+        if act is not None:
+            state.n_cluster += 1
+            state._bump_route("cluster")
+            return "cluster", _EMPTY_EDGES, act, False, 0.0
 
     edges, weight = blossom_edges_only(wm, buf)
     state.n_escalate += 1

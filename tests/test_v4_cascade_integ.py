@@ -59,5 +59,8 @@ def test_cascade_ler_smoke_d3():
         if np.any(batch_pred[s] != obs[s]):
             batch_errors += 1
     assert errors == batch_errors
-    routed = state.n_empty + state.n_cache + state.n_pair + state.n_clique + state.n_peel + state.n_escalate
+    # Every window takes exactly one route. n_cluster is the certified CLUSTER
+    # route, on by default when numba is importable.
+    routed = (state.n_empty + state.n_cache + state.n_pair + state.n_clique + state.n_peel
+              + state.n_escalate + state.n_cluster)
     assert routed == state.n_windows

@@ -15,6 +15,10 @@ from mabs.v4.cascade_core import (
     CASCADEConfig, CASCADEState, _window_depth_choice, prewarm_cascade_graphs,
 )
 from mabs.v4.cascade_route import route_window, route_window_flash_sticky
+from mabs.v4.cluster_route import (
+    apply_cluster_flips, fused_available, get_cluster_table, route_clusters_buf,
+    route_clusters_fused,
+)
 
 _EMPTY_EDGES = np.zeros((0, 2), dtype=np.int64)
 _EMPTY_ACTION = CommitAction.empty()
@@ -105,12 +109,19 @@ def stream_shot_cascade_timed(
         flash_luts = None
         if windows is not None:
             flash_luts = [get_flash_lut(wm) for wm in windows]
+        cluster_on = config.resolved_cluster_route()
+        cluster_margin = float(config.cluster_margin)
+        cluster_max = int(config.cluster_max_nodes)
+        cluster_tabs = None
+        if cluster_on and windows is not None:
+            cluster_tabs = [get_cluster_table(wm, max_nodes=cluster_max) for wm in windows]
 
         for w_idx, wm in enumerate(_iter_windows()):
             lo, hi, n = wm.det_lo, wm.det_hi, wm.n_local
             buf = wm.buf
             lut = flash_luts[w_idx] if flash_luts is not None else get_flash_lut(wm)
             defect_buf = lut._defect_buf
+            fused = None
             timers.reset()
             with timers.input():
                 np.bitwise_xor(det[lo:hi], carry[lo:hi], out=buf[:n])
@@ -173,15 +184,45 @@ def stream_shot_cascade_timed(
                                 if sticky_on:
                                     state.sticky_this_shot = True
                     else:
-                        # K >= 3 → immediate blossom (edges only; commit like w3d)
-                        edges, weight = blossom_edges_only(wm, buf)
-                        path, action, escalated = "escalate", None, True
-                        state.n_escalate += 1
-                        state._bump_route("escalate")
-                        if sticky_on:
-                            state.sticky_this_shot = True
+                        # K >= 3: CLUSTER route when every cluster is a singleton
+                        # or pair and the dual certificate proves the decomposed
+                        # matching optimal; otherwise blossom (commit like w3d).
+                        act = None
+                        if cluster_on:
+                            ctab = (
+                                cluster_tabs[w_idx] if cluster_tabs is not None
+                                else get_cluster_table(wm, max_nodes=cluster_max)
+                            )
+                            if prefer_numba and fused_available(ctab):
+                                # One compiled call: shape, certificate, lookups,
+                                # XOR composition. Carry flips wait for post.
+                                fused = route_clusters_fused(
+                                    buf, n, ctab, margin=cluster_margin,
+                                    stats=state.cluster_stats,
+                                )
+                            else:
+                                act = route_clusters_buf(
+                                    buf, n, ctab, lut, margin=cluster_margin,
+                                    stats=state.cluster_stats, prefer_numba=prefer_numba,
+                                )
+                        if fused is not None or act is not None:
+                            path, edges, action, escalated, weight = (
+                                "cluster", _EMPTY_EDGES, act, False, 0.0
+                            )
+                            state.n_cluster += 1
+                            state._bump_route("cluster")
+                        else:
+                            edges, weight = blossom_edges_only(wm, buf)
+                            path, action, escalated = "escalate", None, True
+                            state.n_escalate += 1
+                            state._bump_route("escalate")
+                            if sticky_on:
+                                state.sticky_this_shot = True
             with timers.post():
-                if action is not None:
+                if fused is not None:
+                    part_mask, n_committed = fused[0], fused[1]
+                    apply_cluster_flips(carry, ctab, fused[2])
+                elif action is not None:
                     part_mask, n_committed = apply_commit_action(action, carry)
                 else:
                     part_mask, n_committed = commit_window_edges(
@@ -201,6 +242,7 @@ def stream_shot_cascade_timed(
                 "boundary": 0.92,
                 "pair": 0.9,
                 "pair_fill": 0.88,
+                "cluster": 0.88,
                 "escalate": 0.35,
                 "sticky": 0.35,
             }.get(path, 0.5)

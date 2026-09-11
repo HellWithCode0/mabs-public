@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mabs"
-version = "4.2.0a1"
-description = "MABS v4.2: CASCADE FLASH (cheap K<=2 CommitAction LUTs + sticky blossom); 4.2.0a1"
+version = "4.3.0a1"
+description = "MABS v4.3: CASCADE FLASH with a certified CLUSTER route for K>=3 windows; 4.3.0a1"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

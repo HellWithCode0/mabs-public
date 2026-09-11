@@ -1,11 +1,13 @@
 """CASCADE — Cached Approximate Sparse Correction with Amortized Deferred Escalation.
 
-MABS v4.2 streaming decoder (Aryaman Katoch).
+MABS v4.3 streaming decoder (Aryaman Katoch).
 
 **FLASH** (default)::
 
     empty → K=1 boundary CommitAction LUT → K=2 pair CommitAction LUT
-    → K>=3 immediate blossom; sticky blossom opt-in (off by default — stage Pareto)
+    → K>=3 CLUSTER route when every cluster is a singleton or adjacent pair and
+      an LP-duality certificate proves the answer optimal (auto: on with numba),
+      else blossom; sticky blossom opt-in (off by default — stage Pareto)
 
 **FULL** (opt-in ``mode="full"`` / ``use_flash=False``)::
 
