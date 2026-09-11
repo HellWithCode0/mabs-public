@@ -186,8 +186,10 @@ def write_summary_md(results, path: Path):
         "",
         "- **mabs_v3 / SLEM**: empty skip + local 1–2 + blossom escalate.",
         "- **mabs_v4 / CASCADE FLASH** (default): empty / K=1 boundary CommitAction LUT /",
-        "  K=2 pair CommitAction LUT / K≥3 immediate blossom. FULL mode",
-        "  (`mode=\"full\"`) restores the 4.1 ExactPatternCache + clique + peel path.",
+        "  K=2 pair CommitAction LUT / K≥3 certified CLUSTER route when every cluster is",
+        "  a singleton or adjacent pair (on when numba is importable), else blossom.",
+        "  `mabs_v4_flash` and `mabs_v4_cluster` force the CLUSTER route off or on. FULL",
+        "  mode (`mode=\"full\"`) restores the 4.1 ExactPatternCache + clique + peel path.",
         "- **stream_w3d**: single `decode_to_edges_array` per window (fair baseline; no double blossom).",
         "",
     ]
@@ -279,7 +281,8 @@ def write_v4_summary(results, path: Path):
         "2. K=0: empty CommitAction.",
         "3. K=1: boundary CommitAction LUT.",
         "4. K=2: pair CommitAction LUT (prewarm hop-radius 4; miss goes to blossom and fills).",
-        "5. K>=3: immediate blossom, committed through `commit_window_edges` like w3d.",
+        "5. K>=3: the CLUSTER route of item 7 when it can certify the window, else",
+        "   blossom, committed through `commit_window_edges` like w3d.",
         "6. Sticky blossom is opt-in (`sticky_blossom=True`) and off by default.",
         "7. CLUSTER route (on by default when numba is importable; methods",
         "   `mabs_v4_cluster` and `mabs_v4_flash` force it on or off): a K>=3",
@@ -320,47 +323,86 @@ def write_v4_summary(results, path: Path):
             f"{_rate(r.extra, 'pair_rate')} | {_rate(r.extra, 'cluster_rate')} | "
             f"{_rate(r.extra, 'cache_rate')} | {_rate(r.extra, 'clique_rate')} | {nd} |"
         )
+    def _xrate(r, key):
+        if r is None or not r.extra:
+            return float("nan")
+        return float(r.extra.get(key, float("nan")))
+
+    # Forced-route columns only when those methods actually ran; otherwise the
+    # table fills with n/a, which reads as a failure rather than "not run".
+    extra_methods = [
+        (name, label) for name, label in (
+            ("mabs_v4_flash", "mabs_v4_flash (esc)"),
+            ("mabs_v4_cluster", "mabs_v4_cluster (esc, cluster)"),
+        )
+        if any(r.method == name for r in results)
+    ]
+    header = "| d | p | stream_w3d | mabs_v3 (esc) | mabs_v4 (esc, cluster) | v4/w3d |"
+    for _name, label in extra_methods:
+        header += f" {label} | /w3d |"
+    header += " LER v4 | LER batch |"
+    ncols = header.count("|") - 1
     lines += [
         "",
         "## vs fair w3d / v3",
         "",
-        "| d | p | stream_w3d | mabs_v3 (esc) | mabs_v4 (esc) | v4/w3d | mabs_v4_cluster (cluster) | v4c/w3d | LER v4 | LER batch |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "Ratios below 1 mean faster than `stream_w3d`. Cluster is the share of all",
+        "windows answered by the certified CLUSTER route.",
+        "",
+        header,
+        "|" + "---:|" * ncols,
     ]
     by = {}
     for r in results:
         by.setdefault((r.d, r.noise), {})[r.method] = r
+    ratios = []
     for (d, p), m in sorted(by.items()):
         w3, v3, v4, batch = m.get("stream_w3d"), m.get("mabs_v3"), m.get("mabs_v4"), m.get("batch")
-        v4c = m.get("mabs_v4_cluster")
         if not (w3 and v4 and batch):
             continue
         v3s = "n/a"
         if v3 is not None:
-            v3e = float(v3.extra.get("escalate_rate", float("nan"))) if v3.extra else float("nan")
-            v3s = f"{v3.mean_stage_ns:.1f} ({v3e:.3f})"
-        esc4 = float(v4.extra.get("escalate_rate", float("nan"))) if v4.extra else float("nan")
+            v3s = f"{v3.mean_stage_ns:.1f} ({_xrate(v3, 'escalate_rate'):.3f})"
         rel = v4.mean_stage_ns / w3.mean_stage_ns if w3.mean_stage_ns else float("nan")
-        v4cs, relc = "n/a", "n/a"
-        if v4c is not None:
-            cr = float(v4c.extra.get("cluster_rate", float("nan"))) if v4c.extra else float("nan")
-            v4cs = f"{v4c.mean_stage_ns:.1f} ({cr:.3f})"
-            if w3.mean_stage_ns:
-                relc = f"{v4c.mean_stage_ns / w3.mean_stage_ns:.3f}"
-        lines.append(
+        ratios.append(rel)
+        row = (
             f"| {d} | {p:g} | {w3.mean_stage_ns:.1f} | {v3s} | "
-            f"{v4.mean_stage_ns:.1f} ({esc4:.3f}) | {rel:.3f} | {v4cs} | {relc} | "
-            f"{v4.ler:.6g} | {batch.ler:.6g} |"
+            f"{v4.mean_stage_ns:.1f} ({_xrate(v4, 'escalate_rate'):.3f}, "
+            f"{_xrate(v4, 'cluster_rate'):.3f}) | {rel:.3f} |"
         )
+        for name, _label in extra_methods:
+            rx = m.get(name)
+            if rx is None:
+                row += " not run | |"
+                continue
+            relx = rx.mean_stage_ns / w3.mean_stage_ns if w3.mean_stage_ns else float("nan")
+            inner = f"{_xrate(rx, 'escalate_rate'):.3f}"
+            if name == "mabs_v4_cluster":
+                inner += f", {_xrate(rx, 'cluster_rate'):.3f}"
+            row += f" {rx.mean_stage_ns:.1f} ({inner}) | {relx:.3f} |"
+        row += f" {v4.ler:.6g} | {batch.ler:.6g} |"
+        lines.append(row)
+
+    finite = [x for x in ratios if x == x]
+    if finite:
+        speed_claim = [
+            f"- **Observed on this run:** `mabs_v4` stage / `stream_w3d` stage ranged from "
+            f"{min(finite):.2f} to {max(finite):.2f} across the {len(finite)} cells above.",
+            "  All methods ran once, in one process, on shared window matchers, so the",
+            "  ratios are the comparable number and absolute times are specific to this host.",
+            "  Repeat the run before quoting a ratio; one run carries no error bar.",
+        ]
+    else:
+        speed_claim = ["- No cell ran both `mabs_v4` and `stream_w3d`, so no speed comparison."]
     lines += [
         "",
         "## Claims / limitations",
         "",
         "- **Claim:** LER = batch and N_disagree = 0 on the cells in the table above.",
-        "- **Not claimed:** a stage speedup vs fair `stream_w3d`. FLASH targets parity;",
-        "  the gap is small and run-to-run noise can flip its sign.",
+        *speed_claim,
         "- Not claiming C++ Sparse Blossom absolute time per round.",
-        "- `defer_hard` was removed in 4.1; hard windows always go straight to blossom.",
+        "- `defer_hard` was removed in 4.1; a K>=3 window the CLUSTER route cannot",
+        "  certify goes straight to blossom.",
         "- The cache in FULL mode is an **ExactPatternCache**, exact memoization, not",
         "  translation isomorphism.",
         "- These are elapsed CPU intervals on this host. They carry no deadline reading;",
@@ -385,37 +427,68 @@ def try_plot(results, out_dir: Path):
     noises = sorted({r.noise for r in results})
     if not noises:
         return None
-    p0 = noises[0]
-    methods = ["batch", "stream_w3d", "stream_w2d", "mabs_adaptive", "mabs_v3", "mabs_v4"]
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    for method in methods:
-        xs, ys = [], []
-        for r in results:
-            if r.method == method and r.noise == p0:
-                xs.append(r.d)
-                ys.append(max(r.ler, 1e-6))
-        if xs:
-            axes[0].semilogy(xs, ys, marker="o", label=method)
-    axes[0].set_xlabel("d")
-    axes[0].set_ylabel("LER")
-    axes[0].set_title(f"LER vs d (p={p0:g})")
-    axes[0].legend(fontsize=8)
-    axes[0].grid(True, which="both", alpha=0.3)
-    for method in methods:
-        if method == "batch":
-            continue
-        xs, ys = [], []
-        for r in results:
-            if r.method == method and r.noise == p0:
-                xs.append(r.d)
-                ys.append(r.mean_stage_ns)
-        if xs:
-            axes[1].plot(xs, ys, marker="o", label=method)
-    axes[1].set_xlabel("d")
-    axes[1].set_ylabel("mean stage time (ns)")
-    axes[1].set_title(f"Stage time vs d (p={p0:g})")
-    axes[1].legend(fontsize=8)
-    axes[1].grid(True, alpha=0.3)
+    # One fixed colour per method, so a method looks the same in every panel.
+    # The first four match matplotlib's default cycle, which earlier plots used.
+    colors = {
+        "batch": "#1f77b4",
+        "stream_w3d": "#ff7f0e",
+        "mabs_v3": "#2ca02c",
+        "mabs_v4": "#d62728",
+        "mabs_v4_flash": "#e377c2",
+        "mabs_v4_cluster": "#17becf",
+        "stream_w2d": "#8c564b",
+        "mabs_adaptive": "#9467bd",
+    }
+    present = [m for m in colors if any(r.method == m for r in results)]
+    # Small horizontal offsets so methods with identical LER stay visible.
+    offset = {m: (i - (len(present) - 1) / 2) * 0.04 for i, m in enumerate(present)}
+    fig, axes = plt.subplots(len(noises), 2, figsize=(10, 4 * len(noises)), squeeze=False)
+    for row, p in enumerate(noises):
+        ax_ler, ax_t = axes[row]
+        any_zero = False
+        for method in present:
+            pts = sorted(
+                (r.d, r.ler, r.shots) for r in results if r.method == method and r.noise == p
+            )
+            if not pts:
+                continue
+            c = colors[method]
+            dx = offset[method]
+            hit = [(d + dx, ler) for d, ler, _s in pts if ler > 0]
+            zero = [(d + dx, 1.0 / s) for d, ler, s in pts if ler <= 0 and s > 0]
+            if hit:
+                ax_ler.semilogy([x for x, _ in hit], [y for _, y in hit], marker="o",
+                                color=c, label=method)
+            else:
+                ax_ler.plot([], [], marker="o", color=c, label=method)
+            if zero:
+                any_zero = True
+                # No errors observed: 1/shots is an upper bound, not a rate.
+                ax_ler.semilogy([x for x, _ in zero], [y for _, y in zero], linestyle="none",
+                                marker="v", markerfacecolor="none", markeredgecolor=c,
+                                markersize=8)
+        ax_ler.set_xlabel("d")
+        ax_ler.set_ylabel("LER")
+        title = f"LER vs d (p={p:g})"
+        if any_zero:
+            title += "\nopen triangle: 0 errors, drawn at 1/shots (upper bound)"
+        ax_ler.set_title(title, fontsize=10)
+        ax_ler.legend(fontsize=8)
+        ax_ler.grid(True, which="both", alpha=0.3)
+        for method in present:
+            if method == "batch":
+                continue  # batch decodes a whole shot at once; not a per-window stage
+            pts = sorted(
+                (r.d, r.mean_stage_ns) for r in results if r.method == method and r.noise == p
+            )
+            if pts:
+                ax_t.plot([d for d, _ in pts], [t / 1e3 for _, t in pts], marker="o",
+                          color=colors[method], label=method)
+        ax_t.set_xlabel("d")
+        ax_t.set_ylabel("mean stage time per window (us)")
+        ax_t.set_title(f"Stage time vs d (p={p:g})", fontsize=10)
+        ax_t.legend(fontsize=8)
+        ax_t.grid(True, alpha=0.3)
     fig.tight_layout()
     out = out_dir / "benchmark_ler_timing.png"
     out_dir.mkdir(parents=True, exist_ok=True)
